@@ -38,8 +38,9 @@ class EMRegistration(object):
     Y: numpy array
         MxD array of source points.
 
-    TY: numpy array
-        MxD array of transformed source points.
+    TY_and_landmarks: numpy array
+        (M+K)xD array of transformed source points (and landmarks at end).
+        To access just source points, use `TY_and_landmarks[:M]`
 
     sigma2: float (positive)
         Initial variance of the Gaussian mixture model.
@@ -51,7 +52,10 @@ class EMRegistration(object):
         Number of source points.
 
     D: int
-        Dimensionality of source and target points
+        Dimensionality of source and target points.
+
+    K: int
+        Number of landmarks (0 if not landmark-guided).
 
     iteration: int
         The current iteration throughout registration.
@@ -91,9 +95,39 @@ class EMRegistration(object):
     Np: float (positive)
         The sum of all elements in P.
 
+    landmark_guided: boolean
+        Is this a guided registration?
+
+    ss2: float (positive)
+        "Sigma Starred Squared"
+        Describes the influence of landmarks. 
+        (The smaller the value is set for σ*2, the stronger the constraints on the corresponding landmarks.)
+
+    X_landmarks: numpy array
+        KxD array of target landmarks
+
+    Y_landmarks: numpy array
+        KxD array of source landmarks
+
+    X_and_landmarks: numpy array
+        (N+K)xD array of target points and landmarks (concatenated)
+
+    Y_and_landmarks: numpy array
+        (M+K)xD array of source points and landmarks (concatenated)
+
     """
 
-    def __init__(self, X, Y, sigma2=None, max_iterations=None, tolerance=None, w=None, *args, **kwargs):
+    def __init__(self, 
+        X, 
+        Y, 
+        sigma2=None, 
+        max_iterations=None, 
+        tolerance=None, 
+        w=None, 
+        ss2=None,
+        X_landmarks=None,
+        Y_landmarks=None,
+        *args, **kwargs):
         if type(X) is not np.ndarray or X.ndim != 2:
             raise ValueError(
                 "The target point cloud (X) must be at a 2D numpy array.")
@@ -125,34 +159,92 @@ class EMRegistration(object):
             raise ValueError(
                 "Expected a value between 0 (inclusive) and 1 (exclusive) for w instead got: {}".format(w))
 
+        if ss2 is not None and (not isinstance(ss2, numbers.Number) or ss2 <= 0):
+            raise ValueError(
+                "Expected a positive value for ss2. Instead got: {}".format(ss2))
+        
+        if X_landmarks is None or len(X_landmarks)==0:
+            raise ValueError(
+                "Expected array of nonzero length for X_landmarks. Instead got: {}".format(X_landmarks))
+        
+        if Y_landmarks is None or len(Y_landmarks)==0:
+            raise ValueError(
+                "Expected array of nonzero length for Y_landmarks. Instead got: {}".format(Y_landmarks))
+
+        if X_landmarks is not None and Y_landmarks is not None and X_landmarks.shape != Y_landmarks.shape:
+            raise ValueError(
+                "Landmark arrays must be the same shape. Cannot enable landmark-guided registration.")
+
+        # Target points (no landmarks)
         self.X = X
+        # Source points (no landmarks)
         self.Y = Y
-        self.TY = Y
-        self.sigma2 = initialize_sigma2(X, Y) if sigma2 is None else sigma2
+
+        # Quantities & dimensionalities of points
         (self.N, self.D) = self.X.shape
         (self.M, _) = self.Y.shape
-        self.tolerance = 0.001 if tolerance is None else tolerance
-        self.w = 0.0 if w is None else w
+
+        # Is this landmark-guided?
+        self.landmark_guided = X_landmarks is not None and Y_landmarks is not None \
+            and X_landmarks.shape == Y_landmarks.shape
+        # Landmark-guided hyper-parameter (What should default be?)
+        self.ss2 = 1e-1 if ss2 is None else ss2
+        # Number of landmarks
+        self.K = 0 if not self.landmark_guided else self.X_landmarks.shape[0]
+        # Landmarks
+        if self.landmark_guided:
+            self.X_landmarks = X_landmarks
+            self.Y_landmarks = Y_landmarks
+        else:
+            self.X_landmarks = np.zeros((0,self.D))
+            self.Y_landmarks = np.zeros((0,self.D))
+        # Points and landmarks concatenated
+        self.X_and_landmarks = np.concatenate([self.X, self.X_landmarks])
+        self.Y_and_landmarks = np.concatenate([self.Y, self.Y_landmarks])
+
+        # Transformed source points (and landmarks)
+        # TODO: Adjust rigid, affine to allow for landmark-guided
+        self.TY = np.copy(Y) # Dummy attribute (so rigid, affine compile)
+        # There appears to be an error here in the pycpd implementation where Y 
+        # is shallow copied into TY, so as TY changes, as does Y.
+        self.TY_and_landmarks = np.copy(self.Y_and_landmarks)
+
+        # Iterations
         self.max_iterations = 100 if max_iterations is None else max_iterations
         self.iteration = 0
         self.diff = np.inf
+
+        # Tolerance
+        self.tolerance = 0.001 if tolerance is None else tolerance
+
+        # Outlier influence
+        # (Default is 0.1 in matlab code)
+        self.w = 0.0 if w is None else w
+
+        # Initial variance of GMM
+        self.sigma2 = initialize_sigma2(X, Y) if sigma2 is None else sigma2
+
+        # Other matricies used mostly in the expectation step.
+        # Their sizes are correct, but I'm not 100% sure
+        # what the scalars represent.
         self.q = np.inf
-        self.P = np.zeros((self.M, self.N))
-        self.Pt1 = np.zeros((self.N, ))
-        self.P1 = np.zeros((self.M, ))
-        self.PX = np.zeros((self.M, self.D))
+        self.P = np.zeros((self.M + self.K, self.N + self.K))
+        self.Pt1 = np.zeros((self.N + self.K, ))
+        self.P1 = np.zeros((self.M + self.K, ))
+        self.PX = np.zeros((self.M + self.K, self.D))
         self.Np = 0
 
     def register(self, callback=lambda **kwargs: None):
         self.transform_point_cloud()
+        # Should we include an additional check for sigma2 > 1e-8 here?
         while self.iteration < self.max_iterations and self.diff > self.tolerance:
             self.iterate()
             if callable(callback):
                 kwargs = {'iteration': self.iteration,
-                          'error': self.q, 'X': self.X, 'Y': self.TY}
+                          'error': self.q, 'X': self.X, 'Y': self.TY_and_landmarks[:self.M]}
                 callback(**kwargs)
 
-        return self.TY, self.get_registration_parameters()
+        return self.TY_and_landmarks[:self.M], self.get_registration_parameters()
 
     def get_registration_parameters(self):
         raise NotImplementedError(
@@ -176,7 +268,8 @@ class EMRegistration(object):
         self.iteration += 1
 
     def expectation(self):
-        P = np.sum((self.X[None, :, :] - self.TY[:, None, :]) ** 2, axis=2)
+        # P = np.sum((self.X[None, :, :] - self.TY[:, None, :]) ** 2, axis=2)
+        P = np.sum((self.X_and_landmarks[None, :, :] - self.TY_and_landmarks[:, None, :]) ** 2, axis=2)
 
         c = (2 * np.pi * self.sigma2) ** (self.D / 2)
         c = c * self.w / (1 - self.w)
@@ -191,7 +284,7 @@ class EMRegistration(object):
         self.P = np.divide(P, den)
         self.Pt1 = np.sum(self.P, axis=0)
         self.P1 = np.sum(self.P, axis=1)
-        self.Np = np.sum(self.P1)
+        self.Np = np.sum(self.P1[:self.M]) # [same]
         self.PX = np.matmul(self.P, self.X)
 
     def maximization(self):
