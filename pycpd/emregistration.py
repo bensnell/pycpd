@@ -268,24 +268,37 @@ class EMRegistration(object):
         self.iteration += 1
 
     def expectation(self):
-        # P = np.sum((self.X[None, :, :] - self.TY[:, None, :]) ** 2, axis=2)
-        P = np.sum((self.X_and_landmarks[None, :, :] - self.TY_and_landmarks[:, None, :]) ** 2, axis=2)
-
+        
+        # Calculate Pmn. Don't worry about landmarks at the moment.
+        # Begin calculating the Pmn matrix. 
+        P = np.sum((self.X[None, :, :] - self.TY_and_landmarks[:self.M][:, None, :]) ** 2, axis=2)
+        # Calculate the right hand side of the expression
+        # in the denominator for Pmn
         c = (2 * np.pi * self.sigma2) ** (self.D / 2)
         c = c * self.w / (1 - self.w)
         c = c * self.M / self.N
-
+        # Apply exponent to Pmn
         P = np.exp(-P / (2 * self.sigma2))
+        # Calculate the full denominator
         den = np.sum(P, axis=0)
         den = np.tile(den, (self.M, 1))
         den[den == 0] = np.finfo(float).eps
         den += c
-
+        # Calculate Pmn. This completes the expectation step for non-guided.
         self.P = np.divide(P, den)
-        self.Pt1 = np.sum(self.P, axis=0)
-        self.P1 = np.sum(self.P, axis=1)
+
+        # Now, consider the effect of landmarks.
+        if self.landmark_guided:
+            # Increase the size of P to account for the interaction between landmarks
+            P = np.pad(P, ((0,self.K),(0,self.K)), 'constant', constant_values=(0))
+            # Make the landmark sub-matrix an identity matrix, where
+            # the diagonals are sigma2/ss2.
+            P[self.M:,self.N:] = np.identity(self.K) * self.sigma2/self.ss2
+
+        self.Pt1 = np.sum(self.P, axis=0) # [same, I think]
+        self.P1 = np.sum(self.P, axis=1) # [same, I think]
         self.Np = np.sum(self.P1[:self.M]) # [same]
-        self.PX = np.matmul(self.P, self.X)
+        self.PX = np.matmul(self.P, self.X_and_landmarks) # [same, I think ?]
 
     def maximization(self):
         self.update_transform()
