@@ -163,11 +163,18 @@ class EMRegistration(object):
             raise ValueError(
                 "Expected a positive value for ss2. Instead got: {}".format(ss2))
         
-        if X_landmarks is None or len(X_landmarks)==0:
+        # Is this landmark-guided?
+        self.landmark_guided = X_landmarks is not None and Y_landmarks is not None \
+            and X_landmarks.shape[0] != 0 and X_landmarks.shape == Y_landmarks.shape
+
+        if self.landmark_guided:
+            print("Enabling landmark-guided registration.")
+
+        if X_landmarks is not None and len(X_landmarks)==0:
             raise ValueError(
                 "Expected array of nonzero length for X_landmarks. Instead got: {}".format(X_landmarks))
         
-        if Y_landmarks is None or len(Y_landmarks)==0:
+        if Y_landmarks is not None and len(Y_landmarks)==0:
             raise ValueError(
                 "Expected array of nonzero length for Y_landmarks. Instead got: {}".format(Y_landmarks))
 
@@ -184,13 +191,10 @@ class EMRegistration(object):
         (self.N, self.D) = self.X.shape
         (self.M, _) = self.Y.shape
 
-        # Is this landmark-guided?
-        self.landmark_guided = X_landmarks is not None and Y_landmarks is not None \
-            and X_landmarks.shape == Y_landmarks.shape
         # Landmark-guided hyper-parameter (What should default be?)
         self.ss2 = 1e-1 if ss2 is None else ss2
         # Number of landmarks
-        self.K = 0 if not self.landmark_guided else self.X_landmarks.shape[0]
+        self.K = 0 if not self.landmark_guided else X_landmarks.shape[0]
         # Landmarks
         if self.landmark_guided:
             self.X_landmarks = X_landmarks
@@ -285,7 +289,7 @@ class EMRegistration(object):
         den[den == 0] = np.finfo(float).eps
         den += c
         # Calculate Pmn. This completes the expectation step for non-guided.
-        self.P = np.divide(P, den)
+        P = np.divide(P, den)
 
         # Now, consider the effect of landmarks.
         if self.landmark_guided:
@@ -294,7 +298,8 @@ class EMRegistration(object):
             # Make the landmark sub-matrix an identity matrix, where
             # the diagonals are sigma2/ss2.
             P[self.M:,self.N:] = np.identity(self.K) * self.sigma2/self.ss2
-
+        
+        self.P = P
         self.Pt1 = np.sum(self.P, axis=0) # [same, I think]
         self.P1 = np.sum(self.P, axis=1) # [same, I think]
         self.Np = np.sum(self.P1[:self.M]) # [same]
