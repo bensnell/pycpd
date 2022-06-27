@@ -27,6 +27,14 @@ The registration methods work for 2D and 3D point clouds. For more information, 
 
 ### From Source
 
+#### Method A
+
+```bash
+pip install git+https://github.com/bensnell/pycpd.git
+```
+
+#### Method B
+
 1. Clone the repository to a location, referred to as the ``root`` folder. For example:
    ```bash
    git clone https://github.com/bensnell/pycpd.git ~/dev/pycpd
