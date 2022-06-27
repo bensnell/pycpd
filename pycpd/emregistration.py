@@ -214,7 +214,6 @@ class EMRegistration(object):
 
         # Transformed source points (and landmarks) (deep copy)
         self.TY_and_landmarks = np.copy(self.Y_and_landmarks)
-        self.TY = np.copy(self.Y) # TODO: REMOVE!
 
         # Iterations
         self.max_iterations = 100 if max_iterations is None else max_iterations
