@@ -147,7 +147,7 @@ class DeformableRegistration(EMRegistration):
 
         # The matlab implementation includes an absolute value around the sigma2,
         # but it appears that's taken care of below (?).
-        self.sigma2 = (xPx - 2 * trPXY + yPy) / (self.Np * self.D)
+        self.sigma2 = (xPx - 2 * trPXY + yPy) / (self.Np_without_landmarks * self.D)
 
         if self.sigma2 <= 0:
             self.sigma2 = self.tolerance / 10

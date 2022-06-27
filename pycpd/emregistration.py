@@ -107,6 +107,12 @@ class EMRegistration(object):
     Np: float (positive)
         The sum of all elements in P.
 
+    Np_with_landmarks: float (positive)
+        The sum of all elements in P, including landmarks.
+
+    Np_without_landmarks: float (positive)
+        The sum of all elements in P, excluding landmarks.
+
     landmark_guided: boolean
         Is this a guided registration?
 
@@ -233,7 +239,9 @@ class EMRegistration(object):
         self.Pt1 = np.zeros((self.N + self.K, ))
         self.P1 = np.zeros((self.M + self.K, ))
         self.PX = np.zeros((self.M + self.K, self.D))
-        self.Np = 0
+        self.Np = 0 # TODO: REMOVE
+        self.Np_with_landmarks = 0
+        self.Np_without_landmarks = 0
 
     def register(self, callback=lambda **kwargs: None):
         self.transform_point_cloud()
@@ -300,6 +308,8 @@ class EMRegistration(object):
         self.Pt1 = np.sum(self.P, axis=0) # [same, I think]
         self.P1 = np.sum(self.P, axis=1) # [same, I think]
         self.Np = np.sum(self.P1[:self.M]) # [same]
+        self.Np_with_landmarks = np.sum(self.P1)
+        self.Np_without_landmarks = np.sum(self.P1[:self.M])
         self.PX = np.matmul(self.P, self.X_and_landmarks) # [same, I think ?]
 
     def maximization(self):
