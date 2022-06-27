@@ -92,16 +92,16 @@ class EMRegistration(object):
         The absolute difference between the current and previous objective function values.
 
     P: numpy array
-        MxN array of probabilities.
+        (M+K)x(N+K) array of probabilities.
         P[m, n] represents the probability that the m-th source point
         corresponds to the n-th target point.
 
     Pt1: numpy array
-        Nx1 column array.
+        (N+K)x1 column array.
         Multiplication result between the transpose of P and a column vector of all 1s.
 
     P1: numpy array
-        Mx1 column array.
+        (M+K)x1 column array.
         Multiplication result between P and a column vector of all 1s.
 
     Np: float (positive)
