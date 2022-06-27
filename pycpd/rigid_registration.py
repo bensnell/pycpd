@@ -22,7 +22,7 @@ class RigidRegistration(EMRegistration):
         scaling parameter.
 
     A: numpy array
-        Utility array used to calculate the rotation matrix.
+        DxD utility array used to calculate the rotation matrix.
         Defined in Fig. 2 of https://arxiv.org/pdf/0905.2635.pdf.
 
     YPY: float
@@ -30,7 +30,7 @@ class RigidRegistration(EMRegistration):
         Defined in Fig. 2 and Eq. 8 of https://arxiv.org/pdf/0905.2635.pdf.
 
     X_hat: numpy array
-        Centered target point cloud. (includes landmarks)
+        (N+K)xD centered target point cloud. (includes landmarks)
         Defined in Fig. 2 of https://arxiv.org/pdf/0905.2635.pdf.
 
     """
@@ -74,6 +74,7 @@ class RigidRegistration(EMRegistration):
         self.X_hat = self.X_and_landmarks - np.tile(muX, (self.N + self.K, 1))
         # [same?] centered source point cloud (includes landmarks)
         Y_hat = self.Y_and_landmarks - np.tile(muY, (self.M + self.K, 1))
+        # This is a scalar:
         self.YPY = np.dot(np.transpose(self.P1), np.sum(
             np.multiply(Y_hat, Y_hat), axis=1))
 
@@ -106,6 +107,7 @@ class RigidRegistration(EMRegistration):
         else:
             return self.s * np.dot(Y, self.R) + self.t
 
+    # [appears to work, but unclear if exactly the same, as the equations differ]
     def update_variance(self):
         """
         Update the variance of the mixture model using the new estimate of the rigid transformation.
@@ -114,13 +116,26 @@ class RigidRegistration(EMRegistration):
         """
         qprev = self.q
 
+        # The shape of this array should be 3x3, but it includes landmark
+        # remnants even though the matlab implementation does not... hmm...
         trAR = np.trace(np.dot(self.A, self.R))
-        xPx = np.dot(np.transpose(self.Pt1), np.sum(
-            np.multiply(self.X_hat, self.X_hat), axis=1))
+
+        # [same?] Matlab implementation doesn't use the centered X points, 
+        # but we'll keep them here and see if it works.
+        xPx = np.dot(np.transpose(self.Pt1[:self.N]), np.sum(
+            np.multiply(self.X_hat[:self.N], self.X_hat[:self.N]), axis=1))
+
+        # [?] Update the error
         self.q = (xPx - 2 * self.s * trAR + self.s * self.s * self.YPY) / \
-            (2 * self.sigma2) + self.D * self.Np/2 * np.log(self.sigma2)
+            (2 * self.sigma2) + self.D * self.Np_without_landmarks/2 * np.log(self.sigma2)
+        
+        # [?] 
         self.diff = np.abs(self.q - qprev)
-        self.sigma2 = (xPx - self.s * trAR) / (self.Np * self.D)
+
+        # [?] 
+        # (This is the same Np as matlab)
+        self.sigma2 = (xPx - self.s * trAR) / (self.Np_without_landmarks * self.D)
+
         if self.sigma2 <= 0:
             self.sigma2 = self.tolerance / 10
 
