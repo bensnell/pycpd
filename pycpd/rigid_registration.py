@@ -94,13 +94,14 @@ class RigidRegistration(EMRegistration):
         self.t = np.transpose(muX) - self.s * \
             np.dot(np.transpose(self.R), np.transpose(muY))
 
+    # [same]
     def transform_point_cloud(self, Y=None):
         """
         Update a point cloud using the new estimate of the rigid transformation.
 
         """
         if Y is None:
-            self.TY = self.s * np.dot(self.Y, self.R) + self.t
+            self.TY_and_landmarks = self.s * np.dot(self.Y_and_landmarks, self.R) + self.t
             return
         else:
             return self.s * np.dot(Y, self.R) + self.t
