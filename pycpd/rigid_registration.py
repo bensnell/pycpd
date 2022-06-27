@@ -107,37 +107,42 @@ class RigidRegistration(EMRegistration):
         else:
             return self.s * np.dot(Y, self.R) + self.t
 
-    # [appears to work, but unclear if exactly the same, as the equations differ]
+    # [same as matlab, not same as original python]
     def update_variance(self):
         """
         Update the variance of the mixture model using the new estimate of the rigid transformation.
         See the update rule for sigma2 in Fig. 2 of of https://arxiv.org/pdf/0905.2635.pdf.
 
         """
-        qprev = self.q
 
-        # The shape of this array should be 3x3, but it includes landmark
-        # remnants even though the matlab implementation does not... hmm...
-        trAR = np.trace(np.dot(self.A, self.R))
+        # ===========
+        # This is not the same form as deformable matlab and deformable python and 
+        # appears to work for guided and work just as well for non-guided.
+        # ===========
 
-        # [same?] Matlab implementation doesn't use the centered X points, 
-        # but we'll keep them here and see if it works.
+        qprev = self.sigma2
+
+        # The original CPD paper does not explicitly calculate the objective functional.
+        # This functional will include terms from both the negative log-likelihood and
+        # the Gaussian kernel used for regularization.
+        self.q = np.inf # not sure what this is for
+
         xPx = np.dot(np.transpose(self.Pt1[:self.N]), np.sum(
-            np.multiply(self.X_hat[:self.N], self.X_hat[:self.N]), axis=1))
+            np.multiply(self.X, self.X), axis=1))
+        yPy = np.dot(np.transpose(self.P1[:self.M]),  np.sum(
+            np.multiply(self.TY_and_landmarks[:self.M], self.TY_and_landmarks[:self.M]), axis=1))
+        trPXY = np.sum(np.multiply(self.TY_and_landmarks[:self.M], self.PX[:self.M]))
 
-        # [?] Update the error
-        self.q = (xPx - 2 * self.s * trAR + self.s * self.s * self.YPY) / \
-            (2 * self.sigma2) + self.D * self.Np_without_landmarks/2 * np.log(self.sigma2)
-        
-        # [?] 
-        self.diff = np.abs(self.q - qprev)
-
-        # [?] 
-        # (This is the same Np as matlab)
-        self.sigma2 = (xPx - self.s * trAR) / (self.Np_without_landmarks * self.D)
+        # The matlab implementation includes an absolute value around the sigma2,
+        # but it appears that's taken care of below (?).
+        self.sigma2 = (xPx - 2 * trPXY + yPy) / (self.Np_without_landmarks * self.D)
 
         if self.sigma2 <= 0:
             self.sigma2 = self.tolerance / 10
+
+        # Here we use the difference between the current and previous
+        # estimate of the variance as a proxy to test for convergence.
+        self.diff = np.abs(self.sigma2 - qprev)
 
     def get_registration_parameters(self):
         """
