@@ -21,7 +21,7 @@ class AffineRegistration(EMRegistration):
         Defined in Fig. 2 and Eq. 8 of https://arxiv.org/pdf/0905.2635.pdf.
 
     X_hat: numpy array
-        Centered target point cloud.
+        (N+K)xD centered target point cloud.
         Defined in Fig. 2 of https://arxiv.org/pdf/0905.2635.pdf
 
     """
@@ -38,39 +38,47 @@ class AffineRegistration(EMRegistration):
         self.B = np.eye(self.D) if B is None else B
         self.t = np.atleast_2d(np.zeros((1, self.D))) if t is None else t
 
+    # [same, tentatively, however matlab has slightly different formulations]
     def update_transform(self):
         """
         Calculate a new estimate of the rigid transformation.
 
         """
 
-        # source and target point cloud means
-        muX = np.divide(np.sum(self.PX, axis=0), self.Np)
-        muY = np.divide(
-            np.sum(np.dot(np.transpose(self.P), self.Y), axis=0), self.Np)
+        # [same] target point cloud mean (includes landmarks)
+        muX = np.divide(np.sum(self.PX, axis=0), self.Np_with_landmarks)
+        # [same] source point cloud mean (includes landmarks)
+        muY = np.divide(np.sum(np.dot(np.transpose(self.P), \
+            self.Y_and_landmarks), axis=0), self.Np_with_landmarks)
 
-        self.X_hat = self.X - np.tile(muX, (self.N, 1))
-        Y_hat = self.Y - np.tile(muY, (self.M, 1))
-
+        # [same?] centered target point cloud (includes landmarks)
+        self.X_hat = self.X_and_landmarks - np.tile(muX, (self.N + self.K, 1))
+        # [same?] centered source point cloud (includes landmarks)
+        Y_hat = self.Y_and_landmarks - np.tile(muY, (self.M + self.K, 1))
+        
+        # [same?] Calculate utility array
         self.A = np.dot(np.transpose(self.X_hat), np.transpose(self.P))
         self.A = np.dot(self.A, Y_hat)
 
+        # [same?] Calculate denominator scalar
+        # Why is this calculated differently than the rigid case?
         self.YPY = np.dot(np.transpose(Y_hat), np.diag(self.P1))
         self.YPY = np.dot(self.YPY, Y_hat)
 
-        # Calculate the new estimate of affine parameters using update rules for (B, t)
+        # [same?] Calculate the new estimate of affine parameters using update rules for (B, t)
         # as defined in Fig. 3 of https://arxiv.org/pdf/0905.2635.pdf.
         self.B = np.linalg.solve(np.transpose(self.YPY), np.transpose(self.A))
         self.t = np.transpose(
             muX) - np.dot(np.transpose(self.B), np.transpose(muY))
 
+    # [same]
     def transform_point_cloud(self, Y=None):
         """
         Update a point cloud using the new estimate of the affine transformation.
 
         """
         if Y is None:
-            self.TY = np.dot(self.Y, self.B) + np.tile(self.t, (self.M, 1))
+            self.TY_and_landmarks = np.dot(self.Y_and_landmarks, self.B) + np.tile(self.t, (self.M + self.K, 1))
             return
         else:
             return np.dot(Y, self.B) + np.tile(self.t, (Y.shape[0], 1))
@@ -81,20 +89,35 @@ class AffineRegistration(EMRegistration):
         See the update rule for sigma2 in Fig. 3 of of https://arxiv.org/pdf/0905.2635.pdf.
 
         """
-        qprev = self.q
+        
+        # ===========
+        # This is not the same form as deformable matlab and deformable python and 
+        # appears to work for guided and work just as well for non-guided.
+        # ===========
 
-        trAB = np.trace(np.dot(self.A, self.B))
-        xPx = np.dot(np.transpose(self.Pt1), np.sum(
-            np.multiply(self.X_hat, self.X_hat), axis=1))
-        trBYPYP = np.trace(np.dot(np.dot(self.B, self.YPY), self.B))
-        self.q = (xPx - 2 * trAB + trBYPYP) / (2 * self.sigma2) + \
-            self.D * self.Np/2 * np.log(self.sigma2)
-        self.diff = np.abs(self.q - qprev)
+        qprev = self.sigma2
 
-        self.sigma2 = (xPx - trAB) / (self.Np * self.D)
+        # The original CPD paper does not explicitly calculate the objective functional.
+        # This functional will include terms from both the negative log-likelihood and
+        # the Gaussian kernel used for regularization.
+        self.q = np.inf # not sure what this is for
+
+        xPx = np.dot(np.transpose(self.Pt1[:self.N]), np.sum(
+            np.multiply(self.X, self.X), axis=1))
+        yPy = np.dot(np.transpose(self.P1[:self.M]),  np.sum(
+            np.multiply(self.TY_and_landmarks[:self.M], self.TY_and_landmarks[:self.M]), axis=1))
+        trPXY = np.sum(np.multiply(self.TY_and_landmarks[:self.M], self.PX[:self.M]))
+
+        # The matlab implementation includes an absolute value around the sigma2,
+        # but it appears that's taken care of below (?).
+        self.sigma2 = (xPx - 2 * trPXY + yPy) / (self.Np_without_landmarks * self.D)
 
         if self.sigma2 <= 0:
             self.sigma2 = self.tolerance / 10
+
+        # Here we use the difference between the current and previous
+        # estimate of the variance as a proxy to test for convergence.
+        self.diff = np.abs(self.sigma2 - qprev)
 
     def get_registration_parameters(self):
         """
