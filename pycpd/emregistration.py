@@ -248,7 +248,13 @@ class EMRegistration(object):
                           'error': self.q, 'X': self.X_points, 'Y': self.TY_points_and_landmarks[:self.M]}
                 callback(**kwargs)
 
-        return self.TY_points_and_landmarks[:self.M], self.get_registration_parameters()
+        return self.get_transformed_points(), self.get_registration_parameters()
+    
+    def get_transformed_points(self):
+        return self.TY_points_and_landmarks[:self.M]
+
+    def get_transformed_landmarks(self):
+        return self.TY_points_and_landmarks[self.M:]
 
     def get_registration_parameters(self):
         raise NotImplementedError(
