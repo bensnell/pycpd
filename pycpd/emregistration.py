@@ -35,8 +35,20 @@ class EMRegistration(object):
     X: numpy array
         NxD array of target points.
 
+    X_landmarks: numpy array
+        KxD array of target landmarks
+
+    X_and_landmarks: numpy array
+        (N+K)xD array of target points and landmarks (concatenated)
+
     Y: numpy array
         MxD array of source points.
+
+    Y_landmarks: numpy array
+        KxD array of source landmarks
+
+    Y_and_landmarks: numpy array
+        (M+K)xD array of source points and landmarks (concatenated)
 
     TY_and_landmarks: numpy array
         (M+K)xD array of transformed source points (and landmarks at end).
@@ -102,18 +114,6 @@ class EMRegistration(object):
         "Sigma Starred Squared"
         Describes the influence of landmarks. 
         (The smaller the value is set for σ*2, the stronger the constraints on the corresponding landmarks.)
-
-    X_landmarks: numpy array
-        KxD array of target landmarks
-
-    Y_landmarks: numpy array
-        KxD array of source landmarks
-
-    X_and_landmarks: numpy array
-        (N+K)xD array of target points and landmarks (concatenated)
-
-    Y_and_landmarks: numpy array
-        (M+K)xD array of source points and landmarks (concatenated)
 
     """
 
