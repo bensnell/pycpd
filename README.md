@@ -9,7 +9,7 @@ This is a pure numpy implementation of the coherent point drift `CPD <https://ar
 2. Affine registration
 3. Gaussian regularized non-rigid registration
 
-Each method also supports landmark-guided coherent point drift (LGCPD), as defined by the paper *Deformable Vessel-Based Registration Using Landmark-Guided Coherent Point Drift*. LGCPD is the same as CPD, except it takes as additional arguments a list of correponding source and target landmarks (points). This can be useful for helping to orient the source and target correctly. When include, the strength of landmarks's influence can be tuned with the positive scalar parameter `ss2`. Lower values of `ss2`
+Each method also supports landmark-guided coherent point drift (LGCPD), as defined by the paper *Deformable Vessel-Based Registration Using Landmark-Guided Coherent Point Drift*. LGCPD is the same as CPD, except it takes as additional arguments a list of correponding source and target landmarks (points). This can be useful for helping to orient the source and target correctly. When included, the strength of landmarks's influence can be tuned with the positive scalar parameter `ss2`. Lower values of `ss2` indicate higher landmark influence and higher values indicate lower influence.
 
 The CPD algorithm is a registration method for aligning two point clouds. In this method, the moving point cloud is modelled as a Gaussian Mixture Model (GMM) and the fixed point cloud are treated as observations from the GMM. The optimal transformation parameters maximze the Maximum A Posteriori (MAP) estimation that the observed point cloud is drawn from the GMM.
 
