@@ -7,10 +7,10 @@ def readme():
 
 
 setup(name='pycpd',
-      version='2.0.0',
-      description='Pure Numpy Implementation of the Coherent Point Drift Algorithm',
+      version='3.0.0',
+      description='Pure Numpy Implementation of the Landmark-Guided Coherent Point Drift Algorithm',
       long_description=readme(),
-      url='https://github.com/siavashk/pycpd',
+      url='https://github.com/bensnell/pycpd',
       classifiers=[
           'Development Status :: 3 - Alpha',
           'License :: OSI Approved :: MIT License',
