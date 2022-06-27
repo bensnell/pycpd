@@ -49,12 +49,12 @@ class AffineRegistration(EMRegistration):
         muX = np.divide(np.sum(self.PX, axis=0), self.Np_with_landmarks)
         # [same] source point cloud mean (includes landmarks)
         muY = np.divide(np.sum(np.dot(np.transpose(self.P), \
-            self.Y_and_landmarks), axis=0), self.Np_with_landmarks)
+            self.Y_points_and_landmarks), axis=0), self.Np_with_landmarks)
 
         # [same?] centered target point cloud (includes landmarks)
-        self.X_hat = self.X_and_landmarks - np.tile(muX, (self.N + self.K, 1))
+        self.X_hat = self.X_points_and_landmarks - np.tile(muX, (self.N + self.K, 1))
         # [same?] centered source point cloud (includes landmarks)
-        Y_hat = self.Y_and_landmarks - np.tile(muY, (self.M + self.K, 1))
+        Y_hat = self.Y_points_and_landmarks - np.tile(muY, (self.M + self.K, 1))
         
         # [same?] Calculate utility array
         self.A = np.dot(np.transpose(self.X_hat), np.transpose(self.P))
@@ -78,7 +78,7 @@ class AffineRegistration(EMRegistration):
 
         """
         if Y is None:
-            self.TY_and_landmarks = np.dot(self.Y_and_landmarks, self.B) + np.tile(self.t, (self.M + self.K, 1))
+            self.TY_points_and_landmarks = np.dot(self.Y_points_and_landmarks, self.B) + np.tile(self.t, (self.M + self.K, 1))
             return
         else:
             return np.dot(Y, self.B) + np.tile(self.t, (Y.shape[0], 1))
@@ -103,10 +103,10 @@ class AffineRegistration(EMRegistration):
         self.q = np.inf # not sure what this is for
 
         xPx = np.dot(np.transpose(self.Pt1[:self.N]), np.sum(
-            np.multiply(self.X, self.X), axis=1))
+            np.multiply(self.X_points, self.X_points), axis=1))
         yPy = np.dot(np.transpose(self.P1[:self.M]),  np.sum(
-            np.multiply(self.TY_and_landmarks[:self.M], self.TY_and_landmarks[:self.M]), axis=1))
-        trPXY = np.sum(np.multiply(self.TY_and_landmarks[:self.M], self.PX[:self.M]))
+            np.multiply(self.TY_points_and_landmarks[:self.M], self.TY_points_and_landmarks[:self.M]), axis=1))
+        trPXY = np.sum(np.multiply(self.TY_points_and_landmarks[:self.M], self.PX[:self.M]))
 
         # The matlab implementation includes an absolute value around the sigma2,
         # but it appears that's taken care of below (?).

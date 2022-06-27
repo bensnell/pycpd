@@ -56,7 +56,7 @@ class DeformableRegistration(EMRegistration):
         self.W = np.zeros((self.M + self.K, self.D))
 
         # Affinity matrix (of gaussian kernel?)
-        self.G = gaussian_kernel(self.Y_and_landmarks, self.beta)
+        self.G = gaussian_kernel(self.Y_points_and_landmarks, self.beta)
 
         # Are we using low-rank calculations? By default, no (and they're
         # not fully supported anyway).
@@ -87,7 +87,7 @@ class DeformableRegistration(EMRegistration):
             A = np.dot(P1_diag, self.G) + \
                 self.alpha * self.sigma2 * np.eye(self.M + self.K)
             # [same] Calc matrix B
-            B = self.PX - np.dot(P1_diag, self.Y_and_landmarks)
+            B = self.PX - np.dot(P1_diag, self.Y_points_and_landmarks)
             # [same] Solve linear system AW=B
             self.W = np.linalg.solve(A, B)
 
@@ -97,7 +97,7 @@ class DeformableRegistration(EMRegistration):
             # https://github.com/markeroon/matlab-computer-vision-routines/tree/master/third_party/CoherentPointDrift
             dP = np.diag(self.P1)
             dPQ = np.matmul(dP, self.Q)
-            F = self.PX - np.matmul(dP, self.Y)
+            F = self.PX - np.matmul(dP, self.Y_points)
 
             self.W = 1 / (self.alpha * self.sigma2) * (F - np.matmul(dPQ, (
                 np.linalg.solve((self.alpha * self.sigma2 * self.inv_S + np.matmul(self.Q.T, dPQ)),
@@ -113,16 +113,16 @@ class DeformableRegistration(EMRegistration):
         """
         if Y is not None:
             # (todo, but ignore for now, since it's not used)
-            G = gaussian_kernel(X=Y, beta=self.beta, Y=self.Y)
+            G = gaussian_kernel(X=Y, beta=self.beta, Y=self.Y_points)
             return Y + np.dot(G, self.W)
         else:
             if self.low_rank is False:
                 # [same]
-                self.TY_and_landmarks = self.Y_and_landmarks + np.dot(self.G, self.W)
+                self.TY_points_and_landmarks = self.Y_points_and_landmarks + np.dot(self.G, self.W)
 
             elif self.low_rank is True:
                 # [same] (but won't be verified since low rank is not fully supported)
-                self.TY_and_landmarks = self.Y_and_landmarks + np.matmul(self.Q, np.matmul(self.S, np.matmul(self.Q.T, self.W)))
+                self.TY_points_and_landmarks = self.Y_points_and_landmarks + np.matmul(self.Q, np.matmul(self.S, np.matmul(self.Q.T, self.W)))
                 return
 
     # [same]
@@ -140,10 +140,10 @@ class DeformableRegistration(EMRegistration):
         self.q = np.inf # not sure what this is for
 
         xPx = np.dot(np.transpose(self.Pt1[:self.N]), np.sum(
-            np.multiply(self.X, self.X), axis=1))
+            np.multiply(self.X_points, self.X_points), axis=1))
         yPy = np.dot(np.transpose(self.P1[:self.M]),  np.sum(
-            np.multiply(self.TY_and_landmarks[:self.M], self.TY_and_landmarks[:self.M]), axis=1))
-        trPXY = np.sum(np.multiply(self.TY_and_landmarks[:self.M], self.PX[:self.M]))
+            np.multiply(self.TY_points_and_landmarks[:self.M], self.TY_points_and_landmarks[:self.M]), axis=1))
+        trPXY = np.sum(np.multiply(self.TY_points_and_landmarks[:self.M], self.PX[:self.M]))
 
         # The matlab implementation includes an absolute value around the sigma2,
         # but it appears that's taken care of below (?).

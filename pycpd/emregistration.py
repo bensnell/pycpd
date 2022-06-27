@@ -32,27 +32,27 @@ class EMRegistration(object):
 
     Attributes
     ----------
-    X: numpy array
+    X_points: numpy array
         NxD array of target points.
 
     X_landmarks: numpy array
         KxD array of target landmarks
 
-    X_and_landmarks: numpy array
+    X_points_and_landmarks: numpy array
         (N+K)xD array of target points and landmarks (concatenated)
 
-    Y: numpy array
+    Y_points: numpy array
         MxD array of source points.
 
     Y_landmarks: numpy array
         KxD array of source landmarks
 
-    Y_and_landmarks: numpy array
+    Y_points_and_landmarks: numpy array
         (M+K)xD array of source points and landmarks (concatenated)
 
-    TY_and_landmarks: numpy array
+    TY_points_and_landmarks: numpy array
         (M+K)xD array of transformed source points (and landmarks at end).
-        To access just source points, use `TY_and_landmarks[:M]`
+        To access just source points, use `TY_points_and_landmarks[:M]`
 
     sigma2: float (positive)
         Initial variance of the Gaussian mixture model.
@@ -103,9 +103,6 @@ class EMRegistration(object):
     P1: numpy array
         (M+K)x1 column array.
         Multiplication result between P and a column vector of all 1s.
-
-    Np: float (positive)
-        The sum of all elements in P.
 
     Np_with_landmarks: float (positive)
         The sum of all elements in P, including landmarks.
@@ -189,13 +186,13 @@ class EMRegistration(object):
                 "Landmark arrays must be the same shape. Cannot enable landmark-guided registration.")
 
         # Target points (no landmarks)
-        self.X = X
+        self.X_points = X
         # Source points (no landmarks)
-        self.Y = Y
+        self.Y_points = Y
 
         # Quantities & dimensionalities of points
-        (self.N, self.D) = self.X.shape
-        (self.M, _) = self.Y.shape
+        (self.N, self.D) = self.X_points.shape
+        (self.M, _) = self.Y_points.shape
 
         # Landmark-guided hyper-parameter (What should default be?)
         self.ss2 = 1e-1 if ss2 is None else ss2
@@ -209,11 +206,11 @@ class EMRegistration(object):
             self.X_landmarks = np.zeros((0,self.D))
             self.Y_landmarks = np.zeros((0,self.D))
         # Points and landmarks concatenated
-        self.X_and_landmarks = np.concatenate([self.X, self.X_landmarks])
-        self.Y_and_landmarks = np.concatenate([self.Y, self.Y_landmarks])
+        self.X_points_and_landmarks = np.concatenate([self.X_points, self.X_landmarks])
+        self.Y_points_and_landmarks = np.concatenate([self.Y_points, self.Y_landmarks])
 
         # Transformed source points (and landmarks) (deep copy)
-        self.TY_and_landmarks = np.copy(self.Y_and_landmarks)
+        self.TY_points_and_landmarks = np.copy(self.Y_points_and_landmarks)
 
         # Iterations
         self.max_iterations = 100 if max_iterations is None else max_iterations
@@ -238,7 +235,6 @@ class EMRegistration(object):
         self.Pt1 = np.zeros((self.N + self.K, ))
         self.P1 = np.zeros((self.M + self.K, ))
         self.PX = np.zeros((self.M + self.K, self.D))
-        self.Np = 0 # TODO: REMOVE
         self.Np_with_landmarks = 0
         self.Np_without_landmarks = 0
 
@@ -249,10 +245,10 @@ class EMRegistration(object):
             self.iterate()
             if callable(callback):
                 kwargs = {'iteration': self.iteration,
-                          'error': self.q, 'X': self.X, 'Y': self.TY_and_landmarks[:self.M]}
+                          'error': self.q, 'X': self.X_points, 'Y': self.TY_points_and_landmarks[:self.M]}
                 callback(**kwargs)
 
-        return self.TY_and_landmarks[:self.M], self.get_registration_parameters()
+        return self.TY_points_and_landmarks[:self.M], self.get_registration_parameters()
 
     def get_registration_parameters(self):
         raise NotImplementedError(
@@ -279,7 +275,7 @@ class EMRegistration(object):
         
         # Calculate Pmn. Don't worry about landmarks at the moment.
         # Begin calculating the Pmn matrix. 
-        P = np.sum((self.X[None, :, :] - self.TY_and_landmarks[:self.M][:, None, :]) ** 2, axis=2)
+        P = np.sum((self.X_points[None, :, :] - self.TY_points_and_landmarks[:self.M][:, None, :]) ** 2, axis=2)
         # Calculate the right hand side of the expression
         # in the denominator for Pmn
         c = (2 * np.pi * self.sigma2) ** (self.D / 2)
@@ -306,10 +302,9 @@ class EMRegistration(object):
         self.P = P
         self.Pt1 = np.sum(self.P, axis=0) # [same, I think]
         self.P1 = np.sum(self.P, axis=1) # [same, I think]
-        self.Np = np.sum(self.P1[:self.M]) # [same]
         self.Np_with_landmarks = np.sum(self.P1)
         self.Np_without_landmarks = np.sum(self.P1[:self.M])
-        self.PX = np.matmul(self.P, self.X_and_landmarks) # [same, I think ?]
+        self.PX = np.matmul(self.P, self.X_points_and_landmarks) # [same, I think ?]
 
     def maximization(self):
         self.update_transform()
