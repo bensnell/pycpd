@@ -206,11 +206,7 @@ class EMRegistration(object):
         self.X_and_landmarks = np.concatenate([self.X, self.X_landmarks])
         self.Y_and_landmarks = np.concatenate([self.Y, self.Y_landmarks])
 
-        # Transformed source points (and landmarks)
-        # TODO: Adjust rigid, affine to allow for landmark-guided
-        self.TY = np.copy(Y) # Dummy attribute (so rigid, affine compile)
-        # There appears to be an error here in the pycpd implementation where Y 
-        # is shallow copied into TY, so as TY changes, as does Y.
+        # Transformed source points (and landmarks) (deep copy)
         self.TY_and_landmarks = np.copy(self.Y_and_landmarks)
 
         # Iterations
