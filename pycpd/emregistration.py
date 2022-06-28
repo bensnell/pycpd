@@ -338,7 +338,7 @@ class EMRegistration(object):
             return self.TY_points_and_landmarks[self.M:]
 
     def get_registration_parameters(self):
-        # TODO: Denormalize
+        # Remember to denormalize here
         raise NotImplementedError(
             "Registration parameters should be defined in child classes.")
 
