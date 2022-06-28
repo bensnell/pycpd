@@ -161,4 +161,6 @@ class DeformableRegistration(EMRegistration):
         Return the current estimate of the deformable transformation parameters.
 
         """
+        # The matlab implementation doesn't denormalize the W (and doesn't return the G),
+        # so I don't think any denormalization needs to be done here (?).
         return self.G, self.W
