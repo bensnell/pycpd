@@ -149,4 +149,21 @@ class RigidRegistration(EMRegistration):
         Return the current estimate of the rigid transformation parameters.
 
         """
-        return self.s, self.R, self.t
+
+        s = self.s
+        R = self.R
+        t = self.t
+
+        # Denormalize if needed
+        if self.normalize:
+            
+            X_mean = self.normalize_params['X_mean']
+            Y_mean = self.normalize_params['Y_mean']
+            X_scale = self.normalize_params['X_scale']
+            Y_scale = self.normalize_params['Y_scale']
+
+            # These formula follow the matlab implementation
+            s = s * X_scale / Y_scale
+            t = X_scale * t + X_mean - s * np.matmul(R, Y_mean)
+
+        return s, R, t
