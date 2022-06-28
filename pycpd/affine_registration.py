@@ -124,4 +124,22 @@ class AffineRegistration(EMRegistration):
         Return the current estimate of the affine transformation parameters.
 
         """
-        return self.B, self.t
+
+        B = self.B
+        t = self.t
+
+        # Denormalize if needed
+        if self.normalize:
+            
+            X_mean = self.normalize_params['X_mean']
+            Y_mean = self.normalize_params['Y_mean']
+            X_scale = self.normalize_params['X_scale']
+            Y_scale = self.normalize_params['Y_scale']
+
+            # The matlab implementation does not explicitly show how to normalize
+            # these variables, but my own derivation produced these formula, which
+            # appear to work.
+            B = B*X_scale/Y_scale
+            t = (t*X_scale+X_mean - np.dot(Y_mean, B))
+        
+        return B, t
