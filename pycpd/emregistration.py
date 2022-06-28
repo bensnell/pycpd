@@ -263,6 +263,14 @@ class EMRegistration(object):
         X_scale = np.sqrt(np.sum(np.sum(np.power(X,2), axis=1))/len(X))
         Y_scale = np.sqrt(np.sum(np.sum(np.power(Y,2), axis=1))/len(Y))
 
+        # Save these params
+        self.normalize_params = {
+            'X_mean' : X_mean,
+            'Y_mean' : Y_mean,
+            'X_scale' : X_scale,
+            'Y_scale' : Y_scale
+        }
+
         # Define normalization functions (nondestructive)
         def normalize(data, type):
             if type == 'X':
@@ -278,7 +286,7 @@ class EMRegistration(object):
                 return data * Y_scale + Y_mean
             None
 
-        # Store these values
+        # Store these functions
         self.normalize_fncts = {
             'normalize' : normalize,
             'denormalize' : denormalize
