@@ -118,6 +118,10 @@ class EMRegistration(object):
         Describes the influence of landmarks. 
         (The smaller the value is set for σ*2, the stronger the constraints on the corresponding landmarks.)
 
+    normalize: boolean
+        Should this registration object normalize the inputs (& denormalize on output)?
+        This is highly recommended, but is false by default.
+
     """
 
     def __init__(self, 
@@ -130,6 +134,7 @@ class EMRegistration(object):
         ss2=None,
         X_landmarks=None,
         Y_landmarks=None,
+        normalize=None,
         *args, **kwargs):
         if type(X) is not np.ndarray or X.ndim != 2:
             raise ValueError(
@@ -212,6 +217,13 @@ class EMRegistration(object):
         # Transformed source points (and landmarks) (deep copy)
         self.TY_points_and_landmarks = np.copy(self.Y_points_and_landmarks)
 
+        # Are we normalizing the inputs?
+        self.normalize = False if normalize is None else normalize
+        # If so, then normalize all internal variables
+        if self.normalize: 
+            self.calculateNormalizationParams()
+            self.normalizeData()
+
         # Iterations
         self.max_iterations = 100 if max_iterations is None else max_iterations
         self.iteration = 0
@@ -225,7 +237,7 @@ class EMRegistration(object):
         self.w = 0.0 if w is None else w
 
         # Initial variance of GMM
-        self.sigma2 = initialize_sigma2(X, Y) if sigma2 is None else sigma2
+        self.sigma2 = initialize_sigma2(self.X_points, self.Y_points) if sigma2 is None else sigma2
 
         # Other matricies used mostly in the expectation step.
         # Their sizes are correct, but I'm not 100% sure
@@ -237,6 +249,56 @@ class EMRegistration(object):
         self.PX = np.zeros((self.M + self.K, self.D))
         self.Np_with_landmarks = 0
         self.Np_without_landmarks = 0
+
+    def calculateNormalizationParams(self):
+
+        # Calculate the mean
+        X_mean = np.mean(self.X_points_and_landmarks, axis=0)
+        Y_mean = np.mean(self.Y_points_and_landmarks, axis=0)
+
+        X = self.X_points_and_landmarks - X_mean
+        Y = self.Y_points_and_landmarks - Y_mean
+
+        # Calculate the scale
+        X_scale = np.sqrt(np.sum(np.sum(np.power(X,2), axis=1))/len(X))
+        Y_scale = np.sqrt(np.sum(np.sum(np.power(Y,2), axis=1))/len(Y))
+
+        # Define normalization functions (nondestructive)
+        def normalize(data, type):
+            if type == 'X':
+                return (data - X_mean) / X_scale
+            if type == 'Y':
+                return (data - Y_mean) / Y_scale
+            return None
+
+        def denormalize(data, type):
+            if type == 'X':
+                return data * X_scale + X_mean
+            if type == 'Y':
+                return data * Y_scale + Y_mean
+            None
+
+        # Store these values
+        self.normalize_fncts = {
+            'normalize' : normalize,
+            'denormalize' : denormalize
+        }
+
+    # Normalize all source and target data (points and landmarks)
+    def normalizeData(self):
+
+        # Retrieve the normalization function
+        normalize = self.normalize_fncts['normalize']
+
+        # Set all X and Y parameters
+        self.X_points = normalize(self.X_points, 'X')
+        self.X_landmarks = normalize(self.X_landmarks, 'X')
+        self.X_points_and_landmarks = normalize(self.X_points_and_landmarks, 'X')
+
+        self.Y_points = normalize(self.Y_points, 'Y')
+        self.Y_landmarks = normalize(self.Y_landmarks, 'Y')
+        self.Y_points_and_landmarks = normalize(self.Y_points_and_landmarks, 'Y')
+        self.TY_points_and_landmarks = normalize(self.TY_points_and_landmarks, 'Y')
 
     def register(self, callback=lambda **kwargs: None):
         self.transform_point_cloud()
@@ -251,12 +313,24 @@ class EMRegistration(object):
         return self.get_transformed_points(), self.get_registration_parameters()
     
     def get_transformed_points(self):
-        return self.TY_points_and_landmarks[:self.M]
+        if self.normalize:
+            denormalize = self.normalize_fncts['denormalize']
+            # It seems counterintuitive to denormalize with the 'X' (not 'Y' params),
+            # but this is exactly what backprojects the normalized TY data into the 
+            # target 'X' space. This is correct as is.
+            return denormalize(self.TY_points_and_landmarks[:self.M], 'X') 
+        else:
+            return self.TY_points_and_landmarks[:self.M]
 
     def get_transformed_landmarks(self):
-        return self.TY_points_and_landmarks[self.M:]
+        if self.normalize:
+            denormalize = self.normalize_fncts['denormalize']
+            return denormalize(self.TY_points_and_landmarks[self.M:], 'X')
+        else:
+            return self.TY_points_and_landmarks[self.M:]
 
     def get_registration_parameters(self):
+        # TODO: Denormalize
         raise NotImplementedError(
             "Registration parameters should be defined in child classes.")
 
