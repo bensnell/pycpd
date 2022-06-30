@@ -1,6 +1,6 @@
 from functools import partial
 import matplotlib.pyplot as plt
-from pycpd import AffineRegistration
+from pylgcpd import AffineRegistration
 import numpy as np
 
 

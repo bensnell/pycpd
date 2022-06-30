@@ -1,7 +1,7 @@
 from functools import partial
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from pycpd import DeformableRegistration
+from pylgcpd import DeformableRegistration
 import numpy as np
 
 

@@ -1,6 +1,6 @@
 from functools import partial
 import matplotlib.pyplot as plt
-from pycpd import RigidRegistration
+from pylgcpd import RigidRegistration
 import numpy as np
 
 
