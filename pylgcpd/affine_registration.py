@@ -143,3 +143,16 @@ class AffineRegistration(EMRegistration):
             t = (t*X_scale+X_mean - np.dot(Y_mean, B))
         
         return B, t
+
+    def get_transformation_function(self):
+        """
+        Return the point cloud transformation function.
+
+        """
+
+        B, t = self.get_registration_parameters()
+        
+        def transform(Y):
+            return np.dot(Y, B) + np.tile(t, (Y.shape[0], 1))
+        
+        return transform
