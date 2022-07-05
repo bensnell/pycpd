@@ -112,8 +112,9 @@ class DeformableRegistration(EMRegistration):
 
         """
         if Y is not None:
-            # (todo, but ignore for now, since it's not used)
-            G = gaussian_kernel(X=Y, beta=self.beta, Y=self.Y_points)
+            # This should work, but it doesn't use the normalization params. 
+            # Use `get_transformation_function()(Y)` instead
+            G = gaussian_kernel(X=Y, beta=self.beta, Y=self.Y_points_and_landmarks)
             return Y + np.dot(G, self.W)
         else:
             if self.low_rank is False:
@@ -161,6 +162,30 @@ class DeformableRegistration(EMRegistration):
         Return the current estimate of the deformable transformation parameters.
 
         """
-        # The matlab implementation doesn't denormalize the W (and doesn't return the G),
-        # so I don't think any denormalization needs to be done here (?).
+        # G and W do not include the normalization factors. Consequently, you must apply those on 
+        # your own or use the get_transformation_function to transform data.
         return self.G, self.W
+
+    def get_transformation_function(self):
+        """
+        Return the point cloud transformation function.
+
+        """
+
+        # Assumes lowrank is False
+
+        _, W = self.get_registration_parameters()
+        beta = self.beta
+        Y_points_and_landmarks = self.Y_points_and_landmarks
+        normalize = self.normalize_fncts['normalize']
+        denormalize = self.normalize_fncts['denormalize']
+        
+        def transform(Y):
+            Y_normalized = normalize(Y,'Y')
+            return denormalize(
+                Y_normalized + np.dot(
+                    gaussian_kernel(X=Y_normalized, beta=beta, Y=Y_points_and_landmarks), 
+                    W), 
+                'X')
+        
+        return transform
