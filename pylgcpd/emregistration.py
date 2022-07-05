@@ -219,10 +219,9 @@ class EMRegistration(object):
 
         # Are we normalizing the inputs?
         self.normalize = False if normalize is None else normalize
-        # If so, then normalize all internal variables
-        if self.normalize: 
-            self.calculateNormalizationParams()
-            self.normalizeData()
+        # Calculate all normalization params and apply normalization if present
+        self.calculateNormalizationParams()
+        self.normalizeData()
 
         # Iterations
         self.max_iterations = 100 if max_iterations is None else max_iterations
@@ -252,16 +251,24 @@ class EMRegistration(object):
 
     def calculateNormalizationParams(self):
 
-        # Calculate the mean
-        X_mean = np.mean(self.X_points_and_landmarks, axis=0)
-        Y_mean = np.mean(self.Y_points_and_landmarks, axis=0)
+        # Set default values
+        X_mean = np.zeros(self.D)
+        Y_mean = np.zeros(self.D)
+        X_scale = 1.0
+        Y_scale = 1.0
 
-        X = self.X_points_and_landmarks - X_mean
-        Y = self.Y_points_and_landmarks - Y_mean
+        if self.normalize:
 
-        # Calculate the scale
-        X_scale = np.sqrt(np.sum(np.sum(np.power(X,2), axis=1))/len(X))
-        Y_scale = np.sqrt(np.sum(np.sum(np.power(Y,2), axis=1))/len(Y))
+            # Calculate the mean
+            X_mean = np.mean(self.X_points_and_landmarks, axis=0)
+            Y_mean = np.mean(self.Y_points_and_landmarks, axis=0)
+
+            X = self.X_points_and_landmarks - X_mean
+            Y = self.Y_points_and_landmarks - Y_mean
+
+            # Calculate the scale
+            X_scale = np.sqrt(np.sum(np.sum(np.power(X,2), axis=1))/len(X))
+            Y_scale = np.sqrt(np.sum(np.sum(np.power(Y,2), axis=1))/len(Y))
 
         # Save these params
         self.normalize_params = {
@@ -284,7 +291,7 @@ class EMRegistration(object):
                 return data * X_scale + X_mean
             if type == 'Y':
                 return data * Y_scale + Y_mean
-            None
+            return None
 
         # Store these functions
         self.normalize_fncts = {
@@ -341,6 +348,11 @@ class EMRegistration(object):
         # Remember to denormalize here
         raise NotImplementedError(
             "Registration parameters should be defined in child classes.")
+
+    def get_transformation_function(self):
+        # Remember to use denormalized params
+        raise NotImplementedError(
+            "Transformation function should be defined in child classes.")
 
     def update_transform(self):
         raise NotImplementedError(
