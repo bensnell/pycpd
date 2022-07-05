@@ -162,8 +162,23 @@ class RigidRegistration(EMRegistration):
             X_scale = self.normalize_params['X_scale']
             Y_scale = self.normalize_params['Y_scale']
 
-            # These formula follow the matlab implementation
+            # Matlab uses a similar, but wrong version of these formula, with
+            # a `np.matmul(R, Y_mean)` term instead of `np.dot(Y_mean, R)`. Testing
+            # has verified that the formula below is correct.
             s = s * X_scale / Y_scale
-            t = X_scale * t + X_mean - s * np.matmul(R, Y_mean)
+            t = X_scale * t + X_mean - s * np.dot(Y_mean, R)
 
         return s, R, t
+
+    def get_transformation_function(self):
+        """
+        Return the point cloud transformation function.
+
+        """
+
+        s, R, t = self.get_registration_parameters()
+
+        def transform(Y):
+            return s * np.dot(Y, R) + t
+        
+        return transform
