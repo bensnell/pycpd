@@ -130,7 +130,7 @@ class EMRegistration(object):
         sigma2=None, 
         max_iterations=None, 
         tolerance=None, 
-        w=None, 
+        outliers=None, 
         ss2=None,
         X_landmarks=None,
         Y_landmarks=None,
@@ -163,9 +163,9 @@ class EMRegistration(object):
             raise ValueError(
                 "Expected a positive float for tolerance instead got: {}".format(tolerance))
 
-        if w is not None and (not isinstance(w, numbers.Number) or w < 0 or w >= 1):
+        if outliers is not None and (not isinstance(outliers, numbers.Number) or outliers < 0 or outliers >= 1):
             raise ValueError(
-                "Expected a value between 0 (inclusive) and 1 (exclusive) for w instead got: {}".format(w))
+                "Expected a value between 0 (inclusive) and 1 (exclusive) for w instead got: {}".format(outliers))
 
         if ss2 is not None and (not isinstance(ss2, numbers.Number) or ss2 <= 0):
             raise ValueError(
@@ -233,7 +233,7 @@ class EMRegistration(object):
 
         # Outlier influence
         # (Default is 0.1 in matlab code)
-        self.w = 0.0 if w is None else w
+        self.outliers = 0.0 if outliers is None else outliers
 
         # Initial variance of GMM
         self.sigma2 = initialize_sigma2(self.X_points, self.Y_points) if sigma2 is None else sigma2
@@ -371,23 +371,27 @@ class EMRegistration(object):
         self.maximization()
         self.iteration += 1
 
+    # [same]
     def expectation(self):
         
         # Calculate Pmn. Don't worry about landmarks at the moment.
         # Begin calculating the Pmn matrix. 
         P = np.sum((self.X_points[None, :, :] - self.TY_points_and_landmarks[:self.M][:, None, :]) ** 2, axis=2)
-        # Calculate the right hand side of the expression
-        # in the denominator for Pmn
-        c = (2 * np.pi * self.sigma2) ** (self.D / 2)
-        c = c * self.w / (1 - self.w)
-        c = c * self.M / self.N
+        
         # Apply exponent to Pmn
         P = np.exp(-P / (2 * self.sigma2))
+
+        # Calculate the constant right hand side of the expression
+        # in the denominator for Pmn. We call this variable `c` for  "const".
+        c = (2 * np.pi * self.sigma2) ** (self.D / 2)
+        c = c * self.outliers / (1 - self.outliers)
+        c = c * self.M / self.N
+
         # Calculate the full denominator
-        den = np.sum(P, axis=0)
+        den = np.sum(P, axis=0) + c
         den = np.tile(den, (self.M, 1))
         den[den == 0] = np.finfo(float).eps
-        den += c
+
         # Calculate Pmn. This completes the expectation step for non-guided.
         P = np.divide(P, den)
 
@@ -400,11 +404,11 @@ class EMRegistration(object):
             P[self.M:,self.N:] = np.identity(self.K) * self.sigma2/self.ss2
         
         self.P = P
-        self.Pt1 = np.sum(self.P, axis=0) # [same, I think]
-        self.P1 = np.sum(self.P, axis=1) # [same, I think]
+        self.Pt1 = np.sum(self.P, axis=0)
+        self.P1 = np.sum(self.P, axis=1) 
         self.Np_with_landmarks = np.sum(self.P1)
         self.Np_without_landmarks = np.sum(self.P1[:self.M])
-        self.PX = np.matmul(self.P, self.X_points_and_landmarks) # [same, I think ?]
+        self.PX = np.matmul(self.P, self.X_points_and_landmarks)
 
     def maximization(self):
         self.update_transform()
