@@ -1,7 +1,9 @@
 from __future__ import division
-import numpy as np
 import numbers
 from warnings import warn
+import numpy as np
+from .utility import to_numpy, import_cupy_xp
+cp, xp = import_cupy_xp()
 
 
 def initialize_sigma2(X, Y):
@@ -9,15 +11,15 @@ def initialize_sigma2(X, Y):
     (M, _) = Y.shape
     diff = X[None, :, :] - Y[:, None, :]
     err = diff ** 2
-    return np.sum(err) / (D * M * N)
+    return xp.sum(err) / (D * M * N)
 
 def lowrankQS(G, beta, num_eig, eig_fgt=False):
     # if we do not use FGT we construct affinity matrix G and find the
     # first eigenvectors/values directly
 
     if eig_fgt is False:
-        S, Q = np.linalg.eigh(G)
-        eig_indices = list(np.argsort(np.abs(S))[::-1][:num_eig])
+        S, Q = xp.linalg.eigh(G)
+        eig_indices = list(xp.argsort(xp.abs(S))[::-1][:num_eig])
         Q = Q[:, eig_indices]  # eigenvectors
         S = S[eig_indices]  # eigenvalues.
 
@@ -136,11 +138,18 @@ class EMRegistration(object):
         Y_landmarks=None,
         normalize=None,
         *args, **kwargs):
-        if type(X) is not np.ndarray or X.ndim != 2:
+
+        # Convert the inputs to arrays on the correct device (CPU or GPU).
+        X = xp.asarray(X)
+        Y = xp.asarray(Y)
+        X_landmarks = xp.asarray(X_landmarks)
+        Y_landmarks = xp.asarray(Y_landmarks)
+
+        if type(X) is not xp.ndarray or X.ndim != 2:
             raise ValueError(
                 "The target point cloud (X) must be at a 2D numpy array.")
 
-        if type(Y) is not np.ndarray or Y.ndim != 2:
+        if type(Y) is not xp.ndarray or Y.ndim != 2:
             raise ValueError(
                 "The source point cloud (Y) must be a 2D numpy array.")
 
@@ -208,14 +217,14 @@ class EMRegistration(object):
             self.X_landmarks = X_landmarks
             self.Y_landmarks = Y_landmarks
         else:
-            self.X_landmarks = np.zeros((0,self.D))
-            self.Y_landmarks = np.zeros((0,self.D))
+            self.X_landmarks = xp.zeros((0,self.D))
+            self.Y_landmarks = xp.zeros((0,self.D))
         # Points and landmarks concatenated
-        self.X_points_and_landmarks = np.concatenate([self.X_points, self.X_landmarks])
-        self.Y_points_and_landmarks = np.concatenate([self.Y_points, self.Y_landmarks])
+        self.X_points_and_landmarks = xp.concatenate([self.X_points, self.X_landmarks])
+        self.Y_points_and_landmarks = xp.concatenate([self.Y_points, self.Y_landmarks])
 
         # Transformed source points (and landmarks) (deep copy)
-        self.TY_points_and_landmarks = np.copy(self.Y_points_and_landmarks)
+        self.TY_points_and_landmarks = xp.copy(self.Y_points_and_landmarks)
 
         # Are we normalizing the inputs?
         self.normalize = False if normalize is None else normalize
@@ -226,7 +235,7 @@ class EMRegistration(object):
         # Iterations
         self.max_iterations = 100 if max_iterations is None else max_iterations
         self.iteration = 0
-        self.diff = np.inf
+        self.diff = xp.inf
 
         # Tolerance
         self.tolerance = 0.001 if tolerance is None else tolerance
@@ -241,34 +250,34 @@ class EMRegistration(object):
         # Other matricies used mostly in the expectation step.
         # Their sizes are correct, but I'm not 100% sure
         # what the scalars represent.
-        self.q = np.inf
-        self.P = np.zeros((self.M + self.K, self.N + self.K))
-        self.Pt1 = np.zeros((self.N + self.K, ))
-        self.P1 = np.zeros((self.M + self.K, ))
-        self.PX = np.zeros((self.M + self.K, self.D))
+        self.q = xp.inf
+        self.P = xp.zeros((self.M + self.K, self.N + self.K))
+        self.Pt1 = xp.zeros((self.N + self.K, ))
+        self.P1 = xp.zeros((self.M + self.K, ))
+        self.PX = xp.zeros((self.M + self.K, self.D))
         self.Np_with_landmarks = 0
         self.Np_without_landmarks = 0
 
     def calculateNormalizationParams(self):
 
         # Set default values
-        X_mean = np.zeros(self.D)
-        Y_mean = np.zeros(self.D)
+        X_mean = xp.zeros(self.D)
+        Y_mean = xp.zeros(self.D)
         X_scale = 1.0
         Y_scale = 1.0
 
         if self.normalize:
 
             # Calculate the mean
-            X_mean = np.mean(self.X_points_and_landmarks, axis=0)
-            Y_mean = np.mean(self.Y_points_and_landmarks, axis=0)
+            X_mean = xp.mean(self.X_points_and_landmarks, axis=0)
+            Y_mean = xp.mean(self.Y_points_and_landmarks, axis=0)
 
             X = self.X_points_and_landmarks - X_mean
             Y = self.Y_points_and_landmarks - Y_mean
 
             # Calculate the scale
-            X_scale = np.sqrt(np.sum(np.sum(np.power(X,2), axis=1))/len(X))
-            Y_scale = np.sqrt(np.sum(np.sum(np.power(Y,2), axis=1))/len(Y))
+            X_scale = xp.sqrt(xp.sum(xp.sum(xp.power(X,2), axis=1))/len(X))
+            Y_scale = xp.sqrt(xp.sum(xp.sum(xp.power(Y,2), axis=1))/len(Y))
 
         # Save these params
         self.normalize_params = {
@@ -279,19 +288,26 @@ class EMRegistration(object):
         }
 
         # Define normalization functions (nondestructive)
-        def normalize(data, type):
-            if type == 'X':
-                return (data - X_mean) / X_scale
-            if type == 'Y':
-                return (data - Y_mean) / Y_scale
-            return None
+        def normalize(data, mode, invert=False):
 
-        def denormalize(data, type):
-            if type == 'X':
-                return data * X_scale + X_mean
-            if type == 'Y':
-                return data * Y_scale + Y_mean
-            return None
+            # Get the appropriate mean and scale based on the type provided
+            mean = X_mean if mode == 'X' else Y_mean
+            scale = X_scale if mode == 'X' else Y_scale
+
+            # We want this function to be able to be used across both numpy and cupy arrays,
+            # so modify the mean and scale to align with the mode of `data`.
+            if type(data) == np.ndarray:
+                mean = to_numpy(mean)
+                scale = to_numpy(scale)
+
+            # Return the normalized data
+            if invert:
+                return data * scale + mean
+            else:
+                return (data - mean) / scale
+
+        def denormalize(data, mode):
+            return normalize(data, mode, True)
 
         # Store these functions
         self.normalize_fncts = {
@@ -315,6 +331,7 @@ class EMRegistration(object):
         self.Y_points_and_landmarks = normalize(self.Y_points_and_landmarks, 'Y')
         self.TY_points_and_landmarks = normalize(self.TY_points_and_landmarks, 'Y')
 
+    # Data returned should be in numpy format
     def register(self, callback=lambda **kwargs: None):
         self.transform_point_cloud()
         # Should we include an additional check for sigma2 > 1e-8 here?
@@ -327,28 +344,32 @@ class EMRegistration(object):
 
         return self.get_transformed_points(), self.get_registration_parameters()
     
+    # Data returned should be in numpy format
     def get_transformed_points(self):
         if self.normalize:
             denormalize = self.normalize_fncts['denormalize']
             # It seems counterintuitive to denormalize with the 'X' (not 'Y' params),
             # but this is exactly what backprojects the normalized TY data into the 
             # target 'X' space. This is correct as is.
-            return denormalize(self.TY_points_and_landmarks[:self.M], 'X') 
+            return to_numpy(denormalize(self.TY_points_and_landmarks[:self.M], 'X'))
         else:
-            return self.TY_points_and_landmarks[:self.M]
+            return to_numpy(self.TY_points_and_landmarks[:self.M])
 
+    # Data returned should be in numpy format
     def get_transformed_landmarks(self):
         if self.normalize:
             denormalize = self.normalize_fncts['denormalize']
-            return denormalize(self.TY_points_and_landmarks[self.M:], 'X')
+            return to_numpy(denormalize(self.TY_points_and_landmarks[self.M:], 'X'))
         else:
-            return self.TY_points_and_landmarks[self.M:]
+            return to_numpy(self.TY_points_and_landmarks[self.M:])
 
+    # Data returned should be in numpy format
     def get_registration_parameters(self):
         # Remember to denormalize here
         raise NotImplementedError(
             "Registration parameters should be defined in child classes.")
 
+    # The function should be expected to work on numpy arrays
     def get_transformation_function(self):
         # Remember to use denormalized params
         raise NotImplementedError(
@@ -376,39 +397,39 @@ class EMRegistration(object):
         
         # Calculate Pmn. Don't worry about landmarks at the moment.
         # Begin calculating the Pmn matrix. 
-        P = np.sum((self.X_points[None, :, :] - self.TY_points_and_landmarks[:self.M][:, None, :]) ** 2, axis=2)
+        P = xp.sum((self.X_points[None, :, :] - self.TY_points_and_landmarks[:self.M][:, None, :]) ** 2, axis=2)
         
         # Apply exponent to Pmn
-        P = np.exp(-P / (2 * self.sigma2))
+        P = xp.exp(-P / (2 * self.sigma2))
 
         # Calculate the constant right hand side of the expression
         # in the denominator for Pmn. We call this variable `c` for  "const".
-        c = (2 * np.pi * self.sigma2) ** (self.D / 2)
+        c = (2 * xp.pi * self.sigma2) ** (self.D / 2)
         c = c * self.outliers / (1 - self.outliers)
         c = c * self.M / self.N
 
         # Calculate the full denominator
-        den = np.sum(P, axis=0) + c
-        den = np.tile(den, (self.M, 1))
-        den[den == 0] = np.finfo(float).eps
+        den = xp.sum(P, axis=0) + c
+        den = xp.tile(den, (self.M, 1))
+        den[den == 0] = xp.finfo(float).eps
 
         # Calculate Pmn. This completes the expectation step for non-guided.
-        P = np.divide(P, den)
+        P = xp.divide(P, den)
 
         # Now, consider the effect of landmarks.
         if self.landmark_guided:
             # Increase the size of P to account for the interaction between landmarks
-            P = np.pad(P, ((0,self.K),(0,self.K)), 'constant', constant_values=(0))
+            P = xp.pad(P, ((0,self.K),(0,self.K)), 'constant', constant_values=(0))
             # Make the landmark sub-matrix an identity matrix, where
             # the diagonals are sigma2/ss2.
-            P[self.M:,self.N:] = np.identity(self.K) * self.sigma2/self.ss2
+            P[self.M:,self.N:] = xp.identity(self.K) * self.sigma2/self.ss2
         
         self.P = P
-        self.Pt1 = np.sum(self.P, axis=0)
-        self.P1 = np.sum(self.P, axis=1) 
-        self.Np_with_landmarks = np.sum(self.P1)
-        self.Np_without_landmarks = np.sum(self.P1[:self.M])
-        self.PX = np.matmul(self.P, self.X_points_and_landmarks)
+        self.Pt1 = xp.sum(self.P, axis=0)
+        self.P1 = xp.sum(self.P, axis=1) 
+        self.Np_with_landmarks = xp.sum(self.P1)
+        self.Np_without_landmarks = xp.sum(self.P1[:self.M])
+        self.PX = xp.matmul(self.P, self.X_points_and_landmarks)
 
     def maximization(self):
         self.update_transform()
