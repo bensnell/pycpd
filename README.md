@@ -16,6 +16,7 @@ Each registration method also supports landmark-guided coherent point drift (LGC
 ### Dependencies
 
 - Numpy
+- Cupy (optional). Install this to speed up your computations, using the GPU as available.
 
 ### Resources
 
