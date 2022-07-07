@@ -2,23 +2,30 @@ from builtins import super
 import numpy as np
 import numbers
 from .emregistration import EMRegistration
+from .utility import to_numpy, import_cupy_xp
+cp, xp = import_cupy_xp()
 
 
 def gaussian_kernel(X, beta, Y=None):
+
+    # Select the appropriate library, as this function should support both
+    # cupy and numpy calculations
+    _xp = np if type(X) == np.ndarray else xp
+
     if Y is None:
         Y = X
     diff = X[:, None, :] - Y[None, :,  :]
-    diff = np.square(diff)
-    diff = np.sum(diff, 2)
-    return np.exp(-diff / (2 * beta**2))
+    diff = _xp.square(diff)
+    diff = _xp.sum(diff, 2)
+    return _xp.exp(-diff / (2 * beta**2))
 
 def low_rank_eigen(G, num_eig):
     """
     Calculate num_eig eigenvectors and eigenvalues of gaussian matrix G.
     Enables lower dimensional solving.
     """
-    S, Q = np.linalg.eigh(G)
-    eig_indices = list(np.argsort(np.abs(S))[::-1][:num_eig])
+    S, Q = xp.linalg.eigh(G)
+    eig_indices = list(xp.argsort(xp.abs(S))[::-1][:num_eig])
     Q = Q[:, eig_indices]  # eigenvectors
     S = S[eig_indices]  # eigenvalues.
     return Q, S
@@ -53,7 +60,7 @@ class DeformableRegistration(EMRegistration):
         self.beta = 2 if beta is None else beta
 
         # Not sure what this is....
-        self.W = np.zeros((self.M + self.K, self.D))
+        self.W = xp.zeros((self.M + self.K, self.D))
 
         # Affinity matrix (of gaussian kernel?)
         self.G = gaussian_kernel(self.Y_points_and_landmarks, self.beta)
@@ -64,8 +71,8 @@ class DeformableRegistration(EMRegistration):
         self.num_eig = num_eig
         if self.low_rank is True:
             self.Q, self.S = low_rank_eigen(self.G, self.num_eig)
-            self.inv_S = np.diag(1./self.S)
-            self.S = np.diag(self.S)
+            self.inv_S = xp.diag(1./self.S)
+            self.S = xp.diag(self.S)
             self.E = 0.
 
     # [same]
@@ -81,50 +88,45 @@ class DeformableRegistration(EMRegistration):
             # diagonal matrix will be calculated. 
             # Note: If this is taking too long, you may consider:
             # from scipy.sparse import spdiags
-            # P1_diag = spdiags(self.P1, 0, self.M+self.K, self.M+self.K)
-            P1_diag = np.diag(self.P1)
+            # P1_diag = xp.sparse.spdiags(self.P1, 0, self.M+self.K, self.M+self.K)
+            P1_diag = xp.diag(self.P1)
             # [same] Calc matrix A
-            A = np.dot(P1_diag, self.G) + \
-                self.alpha * self.sigma2 * np.eye(self.M + self.K)
+            A = xp.dot(P1_diag, self.G) + \
+                self.alpha * self.sigma2 * xp.eye(self.M + self.K)
             # [same] Calc matrix B
-            B = self.PX - np.dot(P1_diag, self.Y_points_and_landmarks)
+            B = self.PX - xp.dot(P1_diag, self.Y_points_and_landmarks)
             # [same] Solve linear system AW=B
-            self.W = np.linalg.solve(A, B)
+            self.W = xp.linalg.solve(A, B)
 
         # (ignore, since low rank is not fully supported)
         elif self.low_rank is True:
             # Matlab code equivalent can be found here:
             # https://github.com/markeroon/matlab-computer-vision-routines/tree/master/third_party/CoherentPointDrift
-            dP = np.diag(self.P1)
-            dPQ = np.matmul(dP, self.Q)
-            F = self.PX - np.matmul(dP, self.Y_points)
+            dP = xp.diag(self.P1)
+            dPQ = xp.matmul(dP, self.Q)
+            F = self.PX - xp.matmul(dP, self.Y_points)
 
-            self.W = 1 / (self.alpha * self.sigma2) * (F - np.matmul(dPQ, (
-                np.linalg.solve((self.alpha * self.sigma2 * self.inv_S + np.matmul(self.Q.T, dPQ)),
-                                (np.matmul(self.Q.T, F))))))
-            QtW = np.matmul(self.Q.T, self.W)
-            self.E = self.E + self.alpha / 2 * np.trace(np.matmul(QtW.T, np.matmul(self.S, QtW)))
+            self.W = 1 / (self.alpha * self.sigma2) * (F - xp.matmul(dPQ, (
+                xp.linalg.solve((self.alpha * self.sigma2 * self.inv_S + xp.matmul(self.Q.T, dPQ)),
+                                (xp.matmul(self.Q.T, F))))))
+            QtW = xp.matmul(self.Q.T, self.W)
+            self.E = self.E + self.alpha / 2 * xp.trace(xp.matmul(QtW.T, xp.matmul(self.S, QtW)))
 
     # [same]
-    def transform_point_cloud(self, Y=None):
+    def transform_point_cloud(self):
         """
         Update a point cloud using the new estimate of the deformable transformation.
 
         """
-        if Y is not None:
-            # This should work, but it doesn't use the normalization params. 
-            # Use `get_transformation_function()(Y)` instead
-            G = gaussian_kernel(X=Y, beta=self.beta, Y=self.Y_points_and_landmarks)
-            return Y + np.dot(G, self.W)
-        else:
-            if self.low_rank is False:
-                # [same]
-                self.TY_points_and_landmarks = self.Y_points_and_landmarks + np.dot(self.G, self.W)
 
-            elif self.low_rank is True:
-                # [same] (but won't be verified since low rank is not fully supported)
-                self.TY_points_and_landmarks = self.Y_points_and_landmarks + np.matmul(self.Q, np.matmul(self.S, np.matmul(self.Q.T, self.W)))
-                return
+        if self.low_rank is False:
+            # [same]
+            self.TY_points_and_landmarks = self.Y_points_and_landmarks + xp.dot(self.G, self.W)
+
+        elif self.low_rank is True:
+            # [same] (but won't be verified since low rank is not fully supported)
+            self.TY_points_and_landmarks = self.Y_points_and_landmarks + xp.matmul(self.Q, xp.matmul(self.S, xp.matmul(self.Q.T, self.W)))
+            return
 
     # [same]
     def update_variance(self):
@@ -138,13 +140,13 @@ class DeformableRegistration(EMRegistration):
         # The original CPD paper does not explicitly calculate the objective functional.
         # This functional will include terms from both the negative log-likelihood and
         # the Gaussian kernel used for regularization.
-        self.q = np.inf # not sure what this is for
+        self.q = xp.inf # not sure what this is for
 
-        xPx = np.dot(np.transpose(self.Pt1[:self.N]), np.sum(
-            np.multiply(self.X_points, self.X_points), axis=1))
-        yPy = np.dot(np.transpose(self.P1[:self.M]),  np.sum(
-            np.multiply(self.TY_points_and_landmarks[:self.M], self.TY_points_and_landmarks[:self.M]), axis=1))
-        trPXY = np.sum(np.multiply(self.TY_points_and_landmarks[:self.M], self.PX[:self.M]))
+        xPx = xp.dot(xp.transpose(self.Pt1[:self.N]), xp.sum(
+            xp.multiply(self.X_points, self.X_points), axis=1))
+        yPy = xp.dot(xp.transpose(self.P1[:self.M]),  xp.sum(
+            xp.multiply(self.TY_points_and_landmarks[:self.M], self.TY_points_and_landmarks[:self.M]), axis=1))
+        trPXY = xp.sum(xp.multiply(self.TY_points_and_landmarks[:self.M], self.PX[:self.M]))
 
         # The matlab implementation includes an absolute value around the sigma2,
         # but it appears that's taken care of below (?).
@@ -155,7 +157,7 @@ class DeformableRegistration(EMRegistration):
 
         # Here we use the difference between the current and previous
         # estimate of the variance as a proxy to test for convergence.
-        self.diff = np.abs(self.sigma2 - qprev)
+        self.diff = xp.abs(self.sigma2 - qprev)
 
     def get_registration_parameters(self):
         """
@@ -164,7 +166,7 @@ class DeformableRegistration(EMRegistration):
         """
         # G and W do not include the normalization factors. Consequently, you must apply those on 
         # your own or use the get_transformation_function to transform data.
-        return self.G, self.W
+        return to_numpy(self.G), to_numpy(self.W)
 
     def get_transformation_function(self):
         """
@@ -175,8 +177,8 @@ class DeformableRegistration(EMRegistration):
         # Assumes lowrank is False
 
         _, W = self.get_registration_parameters()
-        beta = self.beta
-        Y_points_and_landmarks = self.Y_points_and_landmarks
+        beta = to_numpy(self.beta)
+        Y_points_and_landmarks = to_numpy(self.Y_points_and_landmarks)
         normalize = self.normalize_fncts['normalize']
         denormalize = self.normalize_fncts['denormalize']
         
