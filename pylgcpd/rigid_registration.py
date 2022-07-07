@@ -2,8 +2,8 @@ from builtins import super
 import numpy as np
 import numbers
 from .emregistration import EMRegistration
-from .utility import is_positive_semi_definite
-
+from .utility import is_positive_semi_definite, to_numpy, import_cupy_xp
+cp, xp = import_cupy_xp()
 
 class RigidRegistration(EMRegistration):
     """
@@ -53,8 +53,8 @@ class RigidRegistration(EMRegistration):
             raise ValueError(
                 'The scale factor must be a positive number. Instead got: {}.'.format(s))
 
-        self.R = np.eye(self.D) if R is None else R
-        self.t = np.atleast_2d(np.zeros((1, self.D))) if t is None else t
+        self.R = xp.eye(self.D) if R is None else R
+        self.t = xp.atleast_2d(xp.zeros((1, self.D))) if t is None else t
         self.s = 1 if s is None else s
 
     # [same, tentatively]
@@ -65,47 +65,45 @@ class RigidRegistration(EMRegistration):
         """
 
         # [same] target point cloud mean (includes landmarks)
-        muX = np.divide(np.sum(self.PX, axis=0), self.Np_with_landmarks)
+        muX = xp.divide(xp.sum(self.PX, axis=0), self.Np_with_landmarks)
         # [same] source point cloud mean (includes landmarks)
-        muY = np.divide(np.sum(np.dot(np.transpose(self.P), \
+        muY = xp.divide(xp.sum(xp.dot(xp.transpose(self.P), \
             self.Y_points_and_landmarks), axis=0), self.Np_with_landmarks)
         
         # [same?] centered target point cloud (includes landmarks)
-        self.X_hat = self.X_points_and_landmarks - np.tile(muX, (self.N + self.K, 1))
+        self.X_hat = self.X_points_and_landmarks - xp.tile(muX, (self.N + self.K, 1))
         # [same?] centered source point cloud (includes landmarks)
-        Y_hat = self.Y_points_and_landmarks - np.tile(muY, (self.M + self.K, 1))
+        Y_hat = self.Y_points_and_landmarks - xp.tile(muY, (self.M + self.K, 1))
         # This is a scalar:
-        self.YPY = np.dot(np.transpose(self.P1), np.sum(
-            np.multiply(Y_hat, Y_hat), axis=1))
+        self.YPY = xp.dot(xp.transpose(self.P1), xp.sum(
+            xp.multiply(Y_hat, Y_hat), axis=1))
 
         # [same?] Calculate utility array used for rotation calculations
-        self.A = np.dot(np.transpose(self.X_hat), np.transpose(self.P))
-        self.A = np.dot(self.A, Y_hat)
+        self.A = xp.dot(xp.transpose(self.X_hat), xp.transpose(self.P))
+        self.A = xp.dot(self.A, Y_hat)
 
         # [same?] Singular value decomposition as per lemma 1 of https://arxiv.org/pdf/0905.2635.pdf.
-        U, _, V = np.linalg.svd(self.A, full_matrices=True)
-        C = np.ones((self.D, ))
-        C[self.D-1] = np.linalg.det(np.dot(U, V))
+        U, _, V = xp.linalg.svd(self.A, full_matrices=True)
+        C = xp.ones((self.D, ))
+        C[self.D-1] = xp.linalg.det(xp.dot(U, V))
 
         # [same] Calculate the rotation matrix using Eq. 9 of https://arxiv.org/pdf/0905.2635.pdf.
-        self.R = np.transpose(np.dot(np.dot(U, np.diag(C)), V))
+        self.R = xp.transpose(xp.dot(xp.dot(U, xp.diag(C)), V))
         # [same?] Update scale and translation using Fig. 2 of https://arxiv.org/pdf/0905.2635.pdf.
-        self.s = np.trace(np.dot(np.transpose(self.A),
-                                 np.transpose(self.R))) / self.YPY
-        self.t = np.transpose(muX) - self.s * \
-            np.dot(np.transpose(self.R), np.transpose(muY))
+        self.s = xp.trace(xp.dot(xp.transpose(self.A),
+                                 xp.transpose(self.R))) / self.YPY
+        self.t = xp.transpose(muX) - self.s * \
+            xp.dot(xp.transpose(self.R), xp.transpose(muY))
 
     # [same]
-    def transform_point_cloud(self, Y=None):
+    def transform_point_cloud(self):
         """
         Update a point cloud using the new estimate of the rigid transformation.
 
         """
-        if Y is None:
-            self.TY_points_and_landmarks = self.s * np.dot(self.Y_points_and_landmarks, self.R) + self.t
-            return
-        else:
-            return self.s * np.dot(Y, self.R) + self.t
+
+        self.TY_points_and_landmarks = self.s * xp.dot(self.Y_points_and_landmarks, self.R) + self.t
+
 
     # [same as matlab, not same as original python]
     def update_variance(self):
@@ -125,13 +123,13 @@ class RigidRegistration(EMRegistration):
         # The original CPD paper does not explicitly calculate the objective functional.
         # This functional will include terms from both the negative log-likelihood and
         # the Gaussian kernel used for regularization.
-        self.q = np.inf # not sure what this is for
+        self.q = xp.inf # not sure what this is for
 
-        xPx = np.dot(np.transpose(self.Pt1[:self.N]), np.sum(
-            np.multiply(self.X_points, self.X_points), axis=1))
-        yPy = np.dot(np.transpose(self.P1[:self.M]),  np.sum(
-            np.multiply(self.TY_points_and_landmarks[:self.M], self.TY_points_and_landmarks[:self.M]), axis=1))
-        trPXY = np.sum(np.multiply(self.TY_points_and_landmarks[:self.M], self.PX[:self.M]))
+        xPx = xp.dot(xp.transpose(self.Pt1[:self.N]), xp.sum(
+            xp.multiply(self.X_points, self.X_points), axis=1))
+        yPy = xp.dot(xp.transpose(self.P1[:self.M]),  xp.sum(
+            xp.multiply(self.TY_points_and_landmarks[:self.M], self.TY_points_and_landmarks[:self.M]), axis=1))
+        trPXY = xp.sum(xp.multiply(self.TY_points_and_landmarks[:self.M], self.PX[:self.M]))
 
         # The matlab implementation includes an absolute value around the sigma2,
         # but it appears that's taken care of below (?).
@@ -142,7 +140,7 @@ class RigidRegistration(EMRegistration):
 
         # Here we use the difference between the current and previous
         # estimate of the variance as a proxy to test for convergence.
-        self.diff = np.abs(self.sigma2 - qprev)
+        self.diff = xp.abs(self.sigma2 - qprev)
 
     def get_registration_parameters(self):
         """
@@ -163,12 +161,12 @@ class RigidRegistration(EMRegistration):
             Y_scale = self.normalize_params['Y_scale']
 
             # Matlab uses a similar, but wrong version of these formula, with
-            # a `np.matmul(R, Y_mean)` term instead of `np.dot(Y_mean, R)`. Testing
+            # a `xp.matmul(R, Y_mean)` term instead of `xp.dot(Y_mean, R)`. Testing
             # has verified that the formula below is correct.
             s = s * X_scale / Y_scale
-            t = X_scale * t + X_mean - s * np.dot(Y_mean, R)
+            t = X_scale * t + X_mean - s * xp.dot(Y_mean, R)
 
-        return s, R, t
+        return to_numpy(s), to_numpy(R), to_numpy(t)
 
     def get_transformation_function(self):
         """
