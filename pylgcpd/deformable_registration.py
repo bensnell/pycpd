@@ -39,9 +39,13 @@ class DeformableRegistration(EMRegistration):
     ----------
     alpha: float (positive)
         Represents the trade-off between the goodness of maximum likelihood fit and regularization.
+        This is the same as `lambda` in the paper.
+        The larger this is, the more "coherent" the point cloud is.
+
 
     beta: float (positive)
         Width of the Gaussian kernel.
+        The larger this is, the more "rigid" the point cloud is.
 
     """
 

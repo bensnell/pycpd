@@ -124,6 +124,10 @@ class EMRegistration(object):
         Should this registration object normalize the inputs (& denormalize on output)?
         This is highly recommended, but is false by default.
 
+    normalize_joint: boolean
+        Should the inputs be normalized together (dependently), as opposed to independently?
+        This variable only applies if normalize=True. By default, this variable is False.
+
     """
 
     def __init__(self, 
@@ -137,6 +141,7 @@ class EMRegistration(object):
         X_landmarks=None,
         Y_landmarks=None,
         normalize=None,
+        normalize_joint=None,
         *args, **kwargs):
 
         # Convert the inputs to arrays on the correct device (CPU or GPU).
@@ -228,6 +233,8 @@ class EMRegistration(object):
 
         # Are we normalizing the inputs?
         self.normalize = False if normalize is None else normalize
+        # Are we jointly normalizing?
+        self.normalize_joint = False if normalize_joint is None else normalize_joint
         # Calculate all normalization params and apply normalization if present
         self.calculateNormalizationParams()
         self.normalizeData()
@@ -269,15 +276,21 @@ class EMRegistration(object):
         if self.normalize:
 
             # Calculate the mean
-            X_mean = xp.mean(self.X_points_and_landmarks, axis=0)
-            Y_mean = xp.mean(self.Y_points_and_landmarks, axis=0)
+            if self.normalize_joint:
+                X_mean = Y_mean = xp.mean(xp.vstack([self.X_points_and_landmarks, self.Y_points_and_landmarks]), axis=0)
+            else:
+                X_mean = xp.mean(self.X_points_and_landmarks, axis=0)
+                Y_mean = xp.mean(self.Y_points_and_landmarks, axis=0)
 
             X = self.X_points_and_landmarks - X_mean
             Y = self.Y_points_and_landmarks - Y_mean
 
             # Calculate the scale
-            X_scale = xp.sqrt(xp.sum(xp.sum(xp.power(X,2), axis=1))/len(X))
-            Y_scale = xp.sqrt(xp.sum(xp.sum(xp.power(Y,2), axis=1))/len(Y))
+            if self.normalize_joint:
+                X_scale = Y_scale = xp.sqrt(xp.sum(xp.sum(xp.power(xp.vstack([X,Y]),2), axis=1))/(len(X)+len(Y)))
+            else:
+                X_scale = xp.sqrt(xp.sum(xp.sum(xp.power(X,2), axis=1))/len(X))
+                Y_scale = xp.sqrt(xp.sum(xp.sum(xp.power(Y,2), axis=1))/len(Y))
 
         # Save these params
         self.normalize_params = {
