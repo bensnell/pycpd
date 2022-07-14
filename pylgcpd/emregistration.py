@@ -128,6 +128,9 @@ class EMRegistration(object):
         Should the inputs be normalized together (dependently), as opposed to independently?
         This variable only applies if normalize=True. By default, this variable is False.
 
+    verbose: boolean (default: True)
+        Should debugging information be printed to the console?
+
     """
 
     def __init__(self, 
@@ -142,6 +145,7 @@ class EMRegistration(object):
         Y_landmarks=None,
         normalize=None,
         normalize_joint=None,
+        verbose=True,
         *args, **kwargs):
 
         # Convert the inputs to arrays on the correct device (CPU or GPU).
@@ -149,6 +153,9 @@ class EMRegistration(object):
         Y = xp.asarray(Y)
         X_landmarks = xp.asarray(X_landmarks)
         Y_landmarks = xp.asarray(Y_landmarks)
+
+        # Set whether verbose information should be printed
+        self.verbose = False if verbose is None else verbose
 
         if type(X) is not xp.ndarray or X.ndim != 2:
             raise ValueError(
@@ -190,7 +197,7 @@ class EMRegistration(object):
             and X_landmarks.shape[0] != 0 and X_landmarks.shape == Y_landmarks.shape
 
         if self.landmark_guided:
-            print("Enabling landmark-guided registration.")
+            if self.verbose: print("Enabling landmark-guided registration.")
 
         if X_landmarks is not None and len(X_landmarks)==0:
             raise ValueError(
