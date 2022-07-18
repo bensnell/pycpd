@@ -74,9 +74,13 @@ class EMRegistration(object):
     iteration: int
         The current iteration throughout registration.
 
-    max_iterations: int
+    max_iterations: int or None
         Registration will terminate once the algorithm has taken this
-        many iterations.
+        many iterations. If None, the algorithm stops when the tolerance is met.
+
+    force_max_iterations: boolean
+        Value indicates whether algorithm must complete max_iterations iterations before
+        stopping. 
 
     tolerance: float (positive)
         Registration will terminate once the difference between
@@ -146,6 +150,7 @@ class EMRegistration(object):
         normalize=None,
         normalize_joint=None,
         verbose=True,
+        force_max_iterations=None,
         *args, **kwargs):
 
         # Convert the inputs to arrays on the correct device (CPU or GPU).
@@ -247,7 +252,8 @@ class EMRegistration(object):
         self.normalizeData()
 
         # Iterations
-        self.max_iterations = 100 if max_iterations is None else max_iterations
+        self.max_iterations = max_iterations
+        self.force_max_iterations = False if (force_max_iterations is None or max_iterations is None) else force_max_iterations
         self.iteration = 0
         self.diff = xp.inf
 
@@ -355,7 +361,8 @@ class EMRegistration(object):
     def register(self, callback=lambda **kwargs: None):
         self.transform_point_cloud()
         # Should we include an additional check for sigma2 > 1e-8 here?
-        while self.iteration < self.max_iterations and self.diff > self.tolerance:
+        while (self.max_iterations is None or self.iteration < self.max_iterations) and \
+            ((self.max_iterations is not None and self.force_max_iterations) or self.diff > self.tolerance):
             self.iterate()
             if callable(callback):
                 kwargs = {'iteration': self.iteration,
@@ -407,7 +414,13 @@ class EMRegistration(object):
         raise NotImplementedError(
             "Updating the Gaussian variance for the mixture model should be defined in child classes.")
 
+    def update_hyperparameters(self):
+        # This is called before each iteration.
+        # Use this function to update any hyperparameters that change in value each loop.
+        None
+
     def iterate(self):
+        self.update_hyperparameters()
         self.expectation()
         self.maximization()
         self.iteration += 1

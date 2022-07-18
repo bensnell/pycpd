@@ -37,31 +37,75 @@ class DeformableRegistration(EMRegistration):
 
     Attributes
     ----------
-    alpha: float (positive)
+    alpha: float (positive) or dict following the form { 'start' : float, 'stop' : float, 'power' : float }
         Represents the trade-off between the goodness of maximum likelihood fit and regularization.
         This is the same as `lambda` in the paper.
         The larger this is, the more "coherent" the point cloud is.
+        If this is a dict and force_max_iterations is True, then alpha will interpolate between `start` and `stop`
+        with the exponent `power` at each iteration.
 
-
-    beta: float (positive)
+    beta: float (positive) or dict following the form { 'start' : float, 'stop' : float, 'power' : float }
         Width of the Gaussian kernel.
         The larger this is, the more "rigid" the point cloud is.
+        If this is a dict and force_max_iterations is True, then beta will interpolate between `start` and `stop`
+        with the exponent `power` at each iteration.
 
     """
 
     def __init__(self, alpha=None, beta=None, low_rank=False, num_eig=100, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        if alpha is not None and (not isinstance(alpha, numbers.Number) or alpha <= 0):
-            raise ValueError(
-                "Expected a positive value for regularization parameter alpha. Instead got: {}".format(alpha))
 
-        if beta is not None and (not isinstance(beta, numbers.Number) or beta <= 0):
-            raise ValueError(
-                "Expected a positive value for the width of the coherent Gaussian kerenl. Instead got: {}".format(beta))
+        # Validate and create alpha object and numerical params
+        if alpha is not None and type(alpha) == dict:
+            if "start" not in alpha or "stop" not in alpha:
+                raise ValueError("If `alpha` is a dict, it must contain the keys `start` and `stop`.")
 
-        # Hyper-parameters
-        self.alpha = 2 if alpha is None else alpha
-        self.beta = 2 if beta is None else beta
+        self._alpha = 2 if alpha is None else alpha
+        if isinstance(self._alpha, numbers.Number):
+            self._alpha = {
+                'start' : self._alpha,
+                'stop' : self._alpha
+            }
+        if 'power' not in self._alpha:
+            self._alpha['power'] = 1
+        self.alpha = self._alpha['start']
+
+        if not isinstance(self._alpha['start'], numbers.Number) or self._alpha['start'] <= 0:
+            raise ValueError(
+                "Expected a positive value for regularization parameter alpha `start`. Instead got: {}".format(self._alpha['start']))
+        if not isinstance(self._alpha['stop'], numbers.Number) or self._alpha['stop'] <= 0:
+            raise ValueError(
+                "Expected a positive value for regularization parameter alpha `stop`. Instead got: {}".format(self._alpha['stop']))
+        if not isinstance(self._alpha['power'], numbers.Number) or self._alpha['power'] <= 0:
+            raise ValueError(
+                "Expected a positive value for regularization parameter alpha `power`. Instead got: {}".format(self._alpha['power']))
+
+
+        # Validate and create beta object and numerical params
+        if beta is not None and type(beta) == dict:
+            if "start" not in beta or "stop" not in beta:
+                raise ValueError("If `beta` is a dict, it must contain the keys `start` and `stop`.")
+
+        self._beta = 2 if beta is None else beta
+        if isinstance(self._beta, numbers.Number):
+            self._beta = {
+                'start' : self._beta,
+                'stop' : self._beta
+            }
+        if 'power' not in self._beta:
+            self._beta['power'] = 1
+        self.beta = self._beta['start']
+
+        if not isinstance(self._beta['start'], numbers.Number) or self._beta['start'] <= 0:
+            raise ValueError(
+                "Expected a positive value for regularization parameter beta `start`. Instead got: {}".format(self._beta['start']))
+        if not isinstance(self._beta['stop'], numbers.Number) or self._beta['stop'] <= 0:
+            raise ValueError(
+                "Expected a positive value for regularization parameter beta `stop`. Instead got: {}".format(self._beta['stop']))
+        if not isinstance(self._beta['power'], numbers.Number) or self._beta['power'] <= 0:
+            raise ValueError(
+                "Expected a positive value for regularization parameter beta `power`. Instead got: {}".format(self._beta['power']))
+
 
         # Not sure what this is....
         self.W = xp.zeros((self.M + self.K, self.D))
@@ -78,6 +122,32 @@ class DeformableRegistration(EMRegistration):
             self.inv_S = xp.diag(1./self.S)
             self.S = xp.diag(self.S)
             self.E = 0.
+
+    def update_hyperparameters(self):
+
+        # If force_max_iterations is true, then we can interpolate
+        # the hyperparameters
+        if self.force_max_iterations:
+
+            # Calculate the new parameters
+            alpha_param = (self.iteration / self.max_iterations) ** self._alpha['power']
+            alpha = alpha_param * (self._alpha['stop'] - self._alpha['start']) + self._alpha['start']
+            beta_param = (self.iteration / self.max_iterations) ** self._beta['power']
+            beta = beta_param * (self._beta['stop'] - self._beta['start']) + self._beta['start']
+
+            # Save booleans that indiciate whether the values changed
+            alpha_changed = alpha != self.alpha
+            beta_changed = beta != self.beta
+
+            # Update the internal hyperparameters
+            self.alpha = alpha
+            self.beta = beta
+
+            # Change anything that needs to be changed
+            if beta_changed:
+                # TODO: Optimize this
+                self.G = gaussian_kernel(self.Y_points_and_landmarks, self.beta)
+                
 
     # [same]
     def update_transform(self):
